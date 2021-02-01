@@ -1,0 +1,27 @@
+{
+  "name": "erc721locker",
+  "version": "1.0.0",
+  "description": "Used for bridging ERC721 assets to Near",
+  "scripts": {
+    "compile": "npx hardhat compile",
+    "coverage": "npx hardhat coverage",
+    "test": "npx hardhat test"
+  },
+  "author": "Near Foundation",
+  "license": "MIT",
+  "dependencies": {
+    "@nomiclabs/hardhat-ethers": "^2.0.1",
+    "@nomiclabs/hardhat-solhint": "^2.0.0",
+    "@nomiclabs/hardhat-truffle5": "^2.0.0",
+    "@nomiclabs/hardhat-waffle": "^2.0.1",
+    "@nomiclabs/hardhat-web3": "^2.0.0",
+    "@openzeppelin/contracts": "^3.3.0-solc-0.7",
+    "@openzeppelin/test-helpers": "^0.5.10",
+    "chai": "^4.2.0",
+    "dotenv": "^8.2.0",
+    "ethereum-waffle": "^3.2.1",
+    "hardhat": "^2.0.8",
+    "hardhat-gas-reporter": "^1.0.4",
+    "solidity-coverage": "^0.7.14"
+  }
+}
