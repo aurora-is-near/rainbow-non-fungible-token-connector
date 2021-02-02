@@ -7028,6 +7028,10 @@ querystring@0.2.0:
   resolved "https://registry.yarnpkg.com/querystring/-/querystring-0.2.0.tgz#b209849203bb25df820da756e747005878521620"
   integrity sha1-sgmEkgO7Jd+CDadW50cAWHhSFiA=
 
+"rainbow-bridge@https://github.com/near/rainbow-bridge#b07303ca31c8a3a446e2a3e46654ca3db2d50f3a":
+  version "1.0.0"
+  resolved "https://github.com/near/rainbow-bridge#b07303ca31c8a3a446e2a3e46654ca3db2d50f3a"
+
 randombytes@^2.0.0, randombytes@^2.0.1, randombytes@^2.0.5, randombytes@^2.0.6, randombytes@^2.1.0:
   version "2.1.0"
   resolved "https://registry.yarnpkg.com/randombytes/-/randombytes-2.1.0.tgz#df6f84372f0270dc65cdf6291349ab7a473d4f2a"
