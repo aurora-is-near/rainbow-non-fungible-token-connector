@@ -47,11 +47,16 @@ contract ERC721Locker is IERC721Locker, Locker {
     }
 
     function lockToken(address _token, uint256 _tokenId, string calldata _nearRecipientAccountId) external override {
+        require(_token != address(0), "lockToken: Token cannot be address zero");
+        require(bytes(_nearRecipientAccountId).length > 5, "lockToken: Invalid near recipient");
         IERC721(_token).transferFrom(msg.sender, address(this), _tokenId);
         emit LockedForNativeNear(_token, msg.sender, _tokenId, _nearRecipientAccountId);
     }
 
     function lockToken(address _token, uint256 _tokenId, address _nearEvmAddress, uint256 _migrationFee) external override {
+        require(_token != address(0), "lockToken: Token cannot be address zero");
+        require(_nearEvmAddress != address(0), "lockToken: Recipient evm address cannot be address zero");
+        require(_migrationFee > 0, "lockToken: Migration fee cannot be zero");
         IERC721(_token).transferFrom(msg.sender, address(this), _tokenId);
         emit LockedForNearEVM(_token, msg.sender, _tokenId, _nearEvmAddress, _migrationFee);
     }
