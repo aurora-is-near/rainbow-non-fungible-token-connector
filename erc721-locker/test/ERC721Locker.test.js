@@ -35,6 +35,8 @@ contract('ERC721Locker', function ([deployer, ...otherAccounts]) {
         tokenId: TOKEN_1_ID,
         accountId: "mynearaccount.near"
       })
+
+      expect(await this.mockToken.ownerOf(TOKEN_1_ID)).to.be.equal(this.locker.address)
     })
   })
 })
