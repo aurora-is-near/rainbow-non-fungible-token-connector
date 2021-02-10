@@ -10,6 +10,7 @@ import { IERC721Locker } from "./interfaces/IERC721Locker.sol";
 import { INearProver, Locker } from "./Locker.sol";
 import { StringToUint256 } from "./StringToUint256.sol";
 
+// todo: proxy once tests have covered logic
 contract ERC721Locker is IERC721Locker, Locker {
     using StringToUint256 for string;
 
@@ -48,7 +49,6 @@ contract ERC721Locker is IERC721Locker, Locker {
 
     function lockToken(address _token, uint256 _tokenId, string calldata _nearRecipientAccountId) external override {
         require(_token != address(0), "lockToken: Token cannot be address zero");
-        require(bytes(_nearRecipientAccountId).length > 5, "lockToken: Invalid near recipient");
         IERC721(_token).transferFrom(msg.sender, address(this), _tokenId);
         emit LockedForNativeNear(_token, msg.sender, _tokenId, _nearRecipientAccountId);
     }
@@ -56,15 +56,16 @@ contract ERC721Locker is IERC721Locker, Locker {
     function lockToken(address _token, uint256 _tokenId, address _nearEvmAddress, uint256 _migrationFee) external override {
         require(_token != address(0), "lockToken: Token cannot be address zero");
         require(_nearEvmAddress != address(0), "lockToken: Recipient evm address cannot be address zero");
-        require(_migrationFee > 0, "lockToken: Migration fee cannot be zero");
         IERC721(_token).transferFrom(msg.sender, address(this), _tokenId);
         emit LockedForNearEVM(_token, msg.sender, _tokenId, _nearEvmAddress, _migrationFee);
     }
 
+    // todo: workout how to test
     function unlockToken(bytes calldata _proofData, uint64 _proofBlockHeader) external override {
         ProofDecoder.ExecutionStatus memory status = _parseProof(_proofData, _proofBlockHeader);
         BurnResult memory result = _decodeBurnResult(status.successValue);
 
+        // todo ensure the conversion is safe math secure
         uint256 tokenId = result.tokenId.toUint256();
 
         IERC721(result.token).safeTransferFrom(address(this), result.recipient, tokenId);
