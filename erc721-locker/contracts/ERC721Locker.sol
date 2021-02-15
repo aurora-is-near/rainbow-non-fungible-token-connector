@@ -42,7 +42,11 @@ contract ERC721Locker is IERC721Locker, Locker {
         address recipient;
     }
 
-    constructor(bytes memory _nearTokenFactory, INearProver _nearProver) public {
+    function init(bytes memory _nearTokenFactory, INearProver _nearProver) external {
+        require(address(prover_) == address(0), "Can only call init() once");
+        require(address(_nearProver) != address(0), "Invalid near prover");
+        require(_nearTokenFactory.length > 0, "Invalid near token factory");
+
         nearTokenFactory_ = _nearTokenFactory;
         prover_ = _nearProver;
     }

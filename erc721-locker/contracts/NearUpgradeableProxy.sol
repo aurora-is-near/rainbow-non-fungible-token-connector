@@ -75,7 +75,7 @@ contract NearUpgradeableProxy is UpgradeableProxy {
      */
     function _beforeFallback() internal virtual override {
         require(
-            NearAccessControls(_nearAccessControls()).isAdmin(msg.sender),
+            !NearAccessControls(_nearAccessControls()).isAdmin(msg.sender),
             "Admin cannot fallback to proxy target"
         );
 

@@ -6,12 +6,15 @@ const { expect } = require('chai');
 const ERC721Locker = artifacts.require('ERC721Locker')
 const ERC721BurnableMock = artifacts.require('ERC721BurnableMock')
 
-contract('ERC721Locker', function ([deployer, nearEvmBeneficiary, ...otherAccounts]) {
+contract('ERC721Locker', function ([deployer, nearProver, nearEvmBeneficiary, ...otherAccounts]) {
   const TOKEN_1_ID = new BN('1')
 
   beforeEach(async () => {
-    // todo: constructor should not allow these 'null' value
-    this.locker = await ERC721Locker.new('0x0', ZERO_ADDRESS)
+    this.locker = await ERC721Locker.new()
+    await this.locker.init(
+      Buffer.from('nft.factory.near'),
+      nearProver
+    )
 
     // deploy a mock token and mint the first NFT
     this.mockToken = await ERC721BurnableMock.new()
@@ -19,6 +22,32 @@ contract('ERC721Locker', function ([deployer, nearEvmBeneficiary, ...otherAccoun
 
     // approve the locker
     await this.mockToken.approve(this.locker.address, TOKEN_1_ID)
+  })
+
+  describe('init', () => {
+    beforeEach(async () => {
+      this.locker = await ERC721Locker.new()
+    })
+
+    it('Reverts when prover is zero address', async () => {
+      await expectRevert(
+        this.locker.init(
+          Buffer.from('nft.factory.near'),
+          ZERO_ADDRESS
+        ),
+        "Invalid near prover"
+      )
+    })
+
+    it('Reverts when token factory is zero bytes', async () => {
+      await expectRevert(
+        this.locker.init(
+          Buffer.from(''),
+          nearProver
+        ),
+        "Invalid near token factory"
+      )
+    })
   })
 
   describe('Locking for Near native', () => {
