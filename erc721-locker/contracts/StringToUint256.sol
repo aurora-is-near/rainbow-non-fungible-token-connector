@@ -7,17 +7,21 @@ import "@openzeppelin/contracts/math/SafeMath.sol";
 library StringToUint256 {
     using SafeMath for uint256;
 
-    // todo: does this handle if string is not a number? should revert if not.
-    // todo: safe math should cope with overflow
+    /// @dev should revert if string is not a number
+    /// @dev safe math should cope with overflow
     function toUint256(string memory s) internal pure returns (uint256 result) {
-        bytes memory b = bytes(s);
-        uint i;
-        result = 0;
-        for (i = 0; i < b.length; i++) {
-            uint c = uint(uint8(b[i]));
-            if (c >= 48 && c <= 57) {
-                result = result.mul(10).add(c.sub(48));
+        bytes memory bytesOfString = bytes(s);
+        require(bytesOfString.length <= 78, "Number in string could cause overflow due to length");
+
+        for (uint i = 0; i < bytesOfString.length; i++) {
+            uint charCode = uint(uint8(bytesOfString[i]));
+            if (charCode >= 48 && charCode <= 57) {
+                result = result.mul(10).add(charCode.sub(48));
+            } else {
+                revert("String is not a number");
             }
         }
     }
 }
+
+// https://github.com/provable-things/ethereum-api/blob/master/lib-experimental/oraclizeAPI_lib.sol
