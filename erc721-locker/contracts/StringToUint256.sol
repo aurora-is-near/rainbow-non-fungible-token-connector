@@ -13,6 +13,8 @@ library StringToUint256 {
         bytes memory bytesOfString = bytes(s);
         require(bytesOfString.length <= 78, "Number in string could cause overflow due to length");
 
+        result = 0;
+
         for (uint i = 0; i < bytesOfString.length; i++) {
             uint charCode = uint(uint8(bytesOfString[i]));
             if (charCode >= 48 && charCode <= 57) {

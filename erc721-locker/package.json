@@ -23,6 +23,7 @@
     "hardhat": "^2.0.8",
     "hardhat-gas-reporter": "^1.0.4",
     "rainbow-bridge": "https://github.com/near/rainbow-bridge#b07303ca31c8a3a446e2a3e46654ca3db2d50f3a",
+    "rainbow-bridge-lib": "https://github.com/near/rainbow-bridge-lib",
     "solidity-coverage": "^0.7.14"
   }
 }

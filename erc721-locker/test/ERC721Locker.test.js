@@ -3,17 +3,36 @@ const { ZERO_ADDRESS } = constants;
 
 const { expect } = require('chai');
 
+const { serialize } = require('rainbow-bridge-lib/rainbow/borsh.js');
+const { borshifyOutcomeProof } = require('rainbow-bridge-lib/rainbow/borshify-proof.js');
+
+const { toWei, fromWei, hexToBytes } = web3.utils;
+
 const ERC721Locker = artifacts.require('ERC721Locker')
+const NearProverMock = artifacts.require('test/NearProverMock')
 const ERC721BurnableMock = artifacts.require('ERC721BurnableMock')
 
-contract('ERC721Locker', function ([deployer, nearProver, nearEvmBeneficiary, ...otherAccounts]) {
+// todo change for ERC721 locker event
+const SCHEMA = {
+  'Unlock': {
+    kind: 'struct', fields: [
+      ['flag', 'u8'],
+      ['tokenId', [32]],
+      ['token', [20]],
+      ['recipient', [20]],
+    ]
+  }
+};
+
+contract('ERC721Locker', function ([deployer, nearProver, nearEvmBeneficiary, unlockBeneficiary, ...otherAccounts]) {
   const TOKEN_1_ID = new BN('1')
 
   beforeEach(async () => {
+    this.prover = await NearProverMock.new();
     this.locker = await ERC721Locker.new()
     await this.locker.init(
-      Buffer.from('nft.factory.near'),
-      nearProver
+      Buffer.from('nearnonfuntoken', 'utf-8'),
+      this.prover.address
     )
 
     // deploy a mock token and mint the first NFT
@@ -122,4 +141,26 @@ contract('ERC721Locker', function ([deployer, nearProver, nearEvmBeneficiary, ..
       )
     })
   })
+
+  it('unlock from NEAR', async () => {
+    await this.locker.lockToken(
+      this.mockToken.address,
+      TOKEN_1_ID,
+      "mynearaccount.near"
+    )
+
+    expect(await this.mockToken.ownerOf(TOKEN_1_ID)).to.be.equal(this.locker.address)
+
+    let proof = require('./proof_template.json');
+    proof.outcome_proof.outcome.status.SuccessValue = serialize(SCHEMA, 'Unlock', {
+      flag: 0,
+      tokenId: Buffer.from('00000000000000000000000000000001', 'utf-8'),
+      token: hexToBytes(this.mockToken.address),
+      recipient: hexToBytes(unlockBeneficiary),
+    }).toString('base64');
+
+    await this.locker.unlockToken(borshifyOutcomeProof(proof), 1099);
+
+    expect(await this.mockToken.ownerOf(TOKEN_1_ID)).to.be.equal(unlockBeneficiary)
+  });
 })
