@@ -82,7 +82,7 @@ contract ERC721Locker is IERC721Locker, Locker {
         require(flag == 0, "ERR_NOT_WITHDRAW_RESULT");
 
         return BurnResult({
-            tokenId: string(bytes32ToString(borshData.decodeBytes32())),
+            tokenId: string(bytes32ToString(borshData.decodeBytes32())), //todo: change to decodeBytes as 32 bytes would only be a 16 char string...
             token: address(uint160(borshData.decodeBytes20())),
             recipient: address(uint160(borshData.decodeBytes20()))
         });
