@@ -64,12 +64,10 @@ contract ERC721Locker is IERC721Locker, Locker {
         emit LockedForNearEVM(_token, msg.sender, _tokenId, _nearEvmAddress, _migrationFee);
     }
 
-    // todo: workout how to test
     function unlockToken(bytes calldata _proofData, uint64 _proofBlockHeader) external override {
         ProofDecoder.ExecutionStatus memory status = _parseProof(_proofData, _proofBlockHeader);
         BurnResult memory result = _decodeBurnResult(status.successValue);
 
-        // todo ensure the conversion is safe math secure
         uint256 tokenId = result.tokenId.toUint256();
 
         IERC721(result.token).safeTransferFrom(address(this), result.recipient, tokenId);
