@@ -22,8 +22,10 @@
     "ethereum-waffle": "^3.2.1",
     "hardhat": "^2.0.8",
     "hardhat-gas-reporter": "^1.0.4",
+    "prompt-sync": "^4.2.0",
     "rainbow-bridge": "https://github.com/near/rainbow-bridge#b07303ca31c8a3a446e2a3e46654ca3db2d50f3a",
     "rainbow-bridge-lib": "https://github.com/near/rainbow-bridge-lib",
-    "solidity-coverage": "^0.7.14"
+    "solidity-coverage": "^0.7.14",
+    "web3": "^1.3.4"
   }
 }

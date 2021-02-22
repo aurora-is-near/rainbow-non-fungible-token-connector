@@ -4,7 +4,7 @@ pragma solidity 0.6.12;
 
 import "@openzeppelin/contracts/access/AccessControl.sol";
 
-// todo: should this be moved out
+// todo: should this be moved out this repo if it's generic to any Near contract on ETH?
 contract NearAccessControls is AccessControl {
     bytes32 public constant WHITELIST_ROLE = keccak256("WHITELIST");
     bytes32 public constant SMART_CONTRACT_ROLE = keccak256("SMART_CONTRACT");

@@ -1,3 +1,3 @@
 # rainbow-non-fungible-token-connector
 
-See `erc721-locker/`
+For info on the Ethereum contracts, see `erc721-locker/`
