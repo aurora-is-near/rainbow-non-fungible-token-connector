@@ -3,6 +3,7 @@
 pragma solidity 0.6.12;
 
 import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
+import "@openzeppelin/contracts/math/SafeMath.sol";
 import "rainbow-bridge/contracts/eth/nearbridge/contracts/Borsh.sol";
 import "rainbow-bridge/contracts/eth/nearprover/contracts/ProofDecoder.sol";
 
@@ -10,8 +11,9 @@ import { IERC721Locker } from "./interfaces/IERC721Locker.sol";
 import { INearProver, Locker } from "./Locker.sol";
 import { StringToUint256 } from "./StringToUint256.sol";
 
-// todo: proxy once tests have covered logic
+//todo init interface for version()
 contract ERC721Locker is IERC721Locker, Locker {
+    using SafeMath for uint256;
     using StringToUint256 for string;
 
     event LockedForNativeNear (
@@ -42,13 +44,16 @@ contract ERC721Locker is IERC721Locker, Locker {
         address recipient;
     }
 
+    uint256 initVersion;
+
     function init(bytes memory _nearTokenFactory, INearProver _nearProver) external {
-        require(address(prover_) == address(0), "Can only call init() once");
+        require(version().sub(1) == initVersion, "Can only call init() once per version");
         require(address(_nearProver) != address(0), "Invalid near prover");
         require(_nearTokenFactory.length > 0, "Invalid near token factory");
 
         nearTokenFactory_ = _nearTokenFactory;
         prover_ = _nearProver;
+        initVersion = version();
     }
 
     function lockToken(address _token, uint256 _tokenId, string calldata _nearRecipientAccountId) external override {
@@ -86,6 +91,10 @@ contract ERC721Locker is IERC721Locker, Locker {
             token: address(uint160(borshData.decodeBytes20())),
             recipient: address(uint160(borshData.decodeBytes20()))
         });
+    }
+
+    function version() virtual internal pure returns (uint256) {
+        return 1;
     }
 
     function bytes32ToString(bytes32 _bytes32) private pure returns (string memory) {

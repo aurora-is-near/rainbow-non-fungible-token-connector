@@ -5,24 +5,22 @@ const { expect } = require('chai');
 
 const ERC721LockerABI = require('../artifacts/contracts/ERC721Locker.sol/ERC721Locker.json').abi
 const ERC721Locker = artifacts.require('ERC721Locker')
-const NearAccessControls = artifacts.require('NearAccessControls')
-const NearUpgradeableProxy = artifacts.require('NearUpgradeableProxy')
+const ERC721LockerMock = artifacts.require('ERC721LockerMock')
+const TransparentUpgradeableProxyMock = artifacts.require('TransparentUpgradeableProxyMock')
 
 const ERC721BurnableMock = artifacts.require('ERC721BurnableMock')
 
-contract('NearUpgradeableProxy Tests', function ([deployer, random, nearProver, tokenOwner, ...otherAccounts]) {
+contract('ERC721 Locker with TransparentUpgradeableProxy Tests', function ([deployer, random, nearProver, tokenOwner, admin, ...otherAccounts]) {
   const TOKEN_1_ID = new BN('1')
 
   beforeEach(async () => {
     // this will be what the proxy points to
     this.lockerLogic = await ERC721Locker.new()
 
-    this.accessControls = await NearAccessControls.new({from: deployer})
-
     // deploys the proxy and calls init on the implementation
-    this.proxy = await NearUpgradeableProxy.new(
+    this.proxy = await TransparentUpgradeableProxyMock.new(
       this.lockerLogic.address,
-      this.accessControls.address,
+      admin,
       await new web3.eth.Contract(ERC721LockerABI).methods.init(
         Buffer.from('nft.factory.near'),
         nearProver
@@ -64,36 +62,32 @@ contract('NearUpgradeableProxy Tests', function ([deployer, random, nearProver, 
 
   describe('upgradeTo()', () => {
     it('Can update the implementation of the proxy', async () => {
+      this.newERC721Locker = await ERC721LockerMock.new()
+
       await this.proxy.upgradeTo(
-        this.accessControls.address,
-        {from: deployer}
+        this.newERC721Locker.address,
+        {from: admin}
       )
 
-      const accessControlsViaProxy = await NearAccessControls.at(this.proxy.address)
+      const proxyToNewLocker = await ERC721LockerMock.at(this.proxy.address)
 
       // as no one is setup in contract, deployer should not be admin
-      expect(await accessControlsViaProxy.isAdmin(deployer, {from: random})).to.be.false
+      expect(await proxyToNewLocker.thisWillReturnFalse()).to.be.false
     })
   })
 
   describe('upgradeToAndCall()', () => {
     it('When upgrading can call init on the target implementation', async () => {
-      // create a proxy but dont call init in constructor
-      this.proxy = await NearUpgradeableProxy.new(
-        this.lockerLogic.address,
-        this.accessControls.address,
-        Buffer.from(''),
-        {from: deployer}
-      )
+      this.newERC721Locker = await ERC721LockerMock.new()
 
       // update impl and call init
       await this.proxy.upgradeToAndCall(
-        this.lockerLogic.address,
+        this.newERC721Locker.address,
         await new web3.eth.Contract(ERC721LockerABI).methods.init(
           Buffer.from('nft.factory.near'),
           nearProver
         ).encodeABI(),
-        {from: deployer}
+        {from: admin}
       )
 
       // check that init has been called by trying to call again
@@ -104,7 +98,7 @@ contract('NearUpgradeableProxy Tests', function ([deployer, random, nearProver, 
           nearProver,
           {from: random}
         ),
-        "Can only call init() once"
+        "Can only call init() once per version"
       )
     })
   })
