@@ -85,6 +85,18 @@ contract ERC721Locker is IERC721Locker, Locker, AccessControl {
         emit Unlocked(result.token, tokenId, result.recipient);
     }
 
+    function adminTransfer(address _token, address _destination, uint256 _tokenId) external {
+        require(hasRole(DEFAULT_ADMIN_ROLE, _msgSender()), "AccessControls: Only admin");
+        IERC721(_token).transferFrom(address(this), _destination, _tokenId);
+    }
+
+    function adminDelegatecall(address target, bytes memory data) external returns (bytes memory) {
+        require(hasRole(DEFAULT_ADMIN_ROLE, _msgSender()), "AccessControls: Only admin");
+        (bool success, bytes memory rdata) = target.delegatecall(data);
+        require(success);
+        return rdata;
+    }
+
     function _decodeBurnResult(bytes memory data) internal pure returns(BurnResult memory result) {
         Borsh.Data memory borshData = Borsh.from(data);
 
