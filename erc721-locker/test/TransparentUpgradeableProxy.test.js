@@ -10,7 +10,7 @@ const TransparentUpgradeableProxyMock = artifacts.require('TransparentUpgradeabl
 
 const ERC721BurnableMock = artifacts.require('ERC721BurnableMock')
 
-contract('ERC721 Locker with TransparentUpgradeableProxy Tests', function ([deployer, random, nearProver, tokenOwner, admin, ...otherAccounts]) {
+contract('ERC721 Locker with TransparentUpgradeableProxy Tests', function ([deployer, random, nearProver, tokenOwner, proxyAdmin, lockerAdmin, ...otherAccounts]) {
   const TOKEN_1_ID = new BN('1')
 
   beforeEach(async () => {
@@ -20,10 +20,11 @@ contract('ERC721 Locker with TransparentUpgradeableProxy Tests', function ([depl
     // deploys the proxy and calls init on the implementation
     this.proxy = await TransparentUpgradeableProxyMock.new(
       this.lockerLogic.address,
-      admin,
+      proxyAdmin,
       await new web3.eth.Contract(ERC721LockerABI).methods.init(
         Buffer.from('nft.factory.near'),
-        nearProver
+        nearProver,
+        lockerAdmin
       ).encodeABI(),
       {from: deployer}
     )
@@ -66,12 +67,11 @@ contract('ERC721 Locker with TransparentUpgradeableProxy Tests', function ([depl
 
       await this.proxy.upgradeTo(
         this.newERC721Locker.address,
-        {from: admin}
+        {from: proxyAdmin}
       )
 
       const proxyToNewLocker = await ERC721LockerMock.at(this.proxy.address)
 
-      // as no one is setup in contract, deployer should not be admin
       expect(await proxyToNewLocker.thisWillReturnFalse()).to.be.false
     })
   })
@@ -85,9 +85,10 @@ contract('ERC721 Locker with TransparentUpgradeableProxy Tests', function ([depl
         this.newERC721Locker.address,
         await new web3.eth.Contract(ERC721LockerABI).methods.init(
           Buffer.from('nft.factory.near'),
-          nearProver
+          nearProver,
+          lockerAdmin
         ).encodeABI(),
-        {from: admin}
+        {from: proxyAdmin}
       )
 
       // check that init has been called by trying to call again
@@ -96,6 +97,7 @@ contract('ERC721 Locker with TransparentUpgradeableProxy Tests', function ([depl
         locker.init(
           Buffer.from('nft.factory.near'),
           nearProver,
+          lockerAdmin,
           {from: random}
         ),
         "Can only call init() once per version"

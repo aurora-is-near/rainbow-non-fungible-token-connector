@@ -24,7 +24,7 @@ const SCHEMA = {
   }
 };
 
-contract('ERC721Locker', function ([deployer, nearProver, nearEvmBeneficiary, unlockBeneficiary, ...otherAccounts]) {
+contract('ERC721Locker', function ([deployer, nearProver, nearEvmBeneficiary, unlockBeneficiary, lockerAdmin, ...otherAccounts]) {
   const TOKEN_1_ID = new BN('1')
 
   beforeEach(async () => {
@@ -32,7 +32,8 @@ contract('ERC721Locker', function ([deployer, nearProver, nearEvmBeneficiary, un
     this.locker = await ERC721Locker.new()
     await this.locker.init(
       Buffer.from('nearnonfuntoken', 'utf-8'),
-      this.prover.address
+      this.prover.address,
+      lockerAdmin
     )
 
     // deploy a mock token and mint the first NFT
@@ -52,7 +53,8 @@ contract('ERC721Locker', function ([deployer, nearProver, nearEvmBeneficiary, un
       await expectRevert(
         this.locker.init(
           Buffer.from('nft.factory.near'),
-          ZERO_ADDRESS
+          ZERO_ADDRESS,
+          lockerAdmin
         ),
         "Invalid near prover"
       )
@@ -62,7 +64,8 @@ contract('ERC721Locker', function ([deployer, nearProver, nearEvmBeneficiary, un
       await expectRevert(
         this.locker.init(
           Buffer.from(''),
-          nearProver
+          nearProver,
+          lockerAdmin
         ),
         "Invalid near token factory"
       )

@@ -4,6 +4,7 @@ pragma solidity 0.6.12;
 
 import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import "@openzeppelin/contracts/math/SafeMath.sol";
+import "@openzeppelin/contracts/access/AccessControl.sol";
 import "rainbow-bridge/contracts/eth/nearbridge/contracts/Borsh.sol";
 import "rainbow-bridge/contracts/eth/nearprover/contracts/ProofDecoder.sol";
 
@@ -12,7 +13,7 @@ import { INearProver, Locker } from "./Locker.sol";
 import { StringToUint256 } from "./StringToUint256.sol";
 
 //todo init interface for version()
-contract ERC721Locker is IERC721Locker, Locker {
+contract ERC721Locker is IERC721Locker, Locker, AccessControl {
     using SafeMath for uint256;
     using StringToUint256 for string;
 
@@ -46,10 +47,14 @@ contract ERC721Locker is IERC721Locker, Locker {
 
     uint256 initVersion;
 
-    function init(bytes memory _nearTokenFactory, INearProver _nearProver) external {
+    function init(bytes memory _nearTokenFactory, INearProver _nearProver, address _lockerAdmin) external {
         require(version().sub(1) == initVersion, "Can only call init() once per version");
+        require(_lockerAdmin != address(0), "Invalid locker admin");
         require(address(_nearProver) != address(0), "Invalid near prover");
         require(_nearTokenFactory.length > 0, "Invalid near token factory");
+
+        // this admin will be able to issue further admin roles to others
+        _setupRole(DEFAULT_ADMIN_ROLE, _lockerAdmin);
 
         nearTokenFactory_ = _nearTokenFactory;
         prover_ = _nearProver;
