@@ -1,14 +1,13 @@
 // SPDX-License-Identifier: MIT
 
-pragma solidity 0.6.12;
+pragma solidity 0.8.4;
 
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
-import "@openzeppelin/contracts/token/ERC721/ERC721Burnable.sol";
 
 /*
     Mock contract used in the testing of tagging NFT assets
 */
-contract ERC721BurnableMock is ERC721("MockERC721", "MK721"), ERC721Burnable {
+contract ERC721BurnableMock is ERC721("MockERC721", "MK721") {
     uint256 tokenPointer = 0;
 
     function mint() public {

@@ -11,7 +11,6 @@ import { ProofDecoder } from "rainbow-bridge/contracts/eth/nearprover/contracts/
 import { IERC721Locker } from "./interfaces/IERC721Locker.sol";
 import { INearProver, Locker } from "./Locker.sol";
 
-// todo add admin controlled extension
 contract ERC721Locker is IERC721Locker, Locker, AdminControlled {
     using Strings for uint256;
 
@@ -36,21 +35,31 @@ contract ERC721Locker is IERC721Locker, Locker, AdminControlled {
     }
 
     // NFT contract address -> string token ID -> uint256
-    mapping(address => string => uint256) public stringTokenIdToUnitForNft;
+    mapping(address => mapping(string => uint256)) public stringTokenIdToUnitForNft;
 
-    constructor(bytes memory _nearTokenFactory, INearProver _nearProver, address _lockerAdmin) AdminControlled() {
+    constructor(
+        bytes memory _nearTokenFactory,
+        INearProver _nearProver,
+        uint64 _minBlockAcceptanceHeight,
+        address _admin,
+        uint256 _pausedFlags
+    ) AdminControlled(_admin, _pausedFlags) {
 
-        require(_lockerAdmin != address(0), "Invalid locker admin");
         require(address(_nearProver) != address(0), "Invalid near prover");
         require(_nearTokenFactory.length > 0, "Invalid near token factory");
 
-
-
-        nearTokenFactory_ = _nearTokenFactory;
-        prover_ = _nearProver;
+        minBlockAcceptanceHeight = _minBlockAcceptanceHeight;
+        nearTokenFactory = _nearTokenFactory;
+        prover = _nearProver;
     }
 
-    function lockToken(address _token, uint256 _tokenId, string calldata _nearRecipientAccountId) external override {
+    function lockTokens(address _token, uint256[] calldata _tokenIds, string calldata _nearRecipientAccountId) external {
+        for(uint i = 0; i < _tokenIds.length; i++) {
+            lockToken(_token, _tokenIds[i], _nearRecipientAccountId);
+        }
+    }
+
+    function lockToken(address _token, uint256 _tokenId, string memory _nearRecipientAccountId) public override {
         require(_token != address(0), "lockToken: Token cannot be address zero");
         stringTokenIdToUnitForNft[_token][_tokenId.toString()] = _tokenId;
         IERC721(_token).transferFrom(msg.sender, address(this), _tokenId);
@@ -58,7 +67,7 @@ contract ERC721Locker is IERC721Locker, Locker, AdminControlled {
     }
 
     function unlockToken(bytes calldata _proofData, uint64 _proofBlockHeader) external override {
-        ProofDecoder.ExecutionStatus memory status = _parseProof(_proofData, _proofBlockHeader);
+        ProofDecoder.ExecutionStatus memory status = _parseAndConsumeProof(_proofData, _proofBlockHeader);
         BurnResult memory result = _decodeBurnResult(status.successValue);
 
         uint256 tokenId = stringTokenIdToUnitForNft[result.token][result.tokenId];
@@ -75,21 +84,9 @@ contract ERC721Locker is IERC721Locker, Locker, AdminControlled {
         require(flag == 0, "ERR_NOT_WITHDRAW_RESULT");
 
         return BurnResult({
-            tokenId: string(bytes32ToString(borshData.decodeBytes32())), //todo: change to decodeBytes as 32 bytes would only be a 16 char string...
+            tokenId: string(borshData.decodeBytes()),
             token: address(uint160(borshData.decodeBytes20())),
             recipient: address(uint160(borshData.decodeBytes20()))
         });
-    }
-
-    function bytes32ToString(bytes32 _bytes32) private pure returns (string memory) {
-        uint8 i = 0;
-        while(i < 32 && _bytes32[i] != 0) {
-            i++;
-        }
-        bytes memory bytesArray = new bytes(i);
-        for (i = 0; i < 32 && _bytes32[i] != 0; i++) {
-            bytesArray[i] = _bytes32[i];
-        }
-        return string(bytesArray);
     }
 }
