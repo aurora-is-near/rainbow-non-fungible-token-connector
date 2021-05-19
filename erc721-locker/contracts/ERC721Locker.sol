@@ -14,10 +14,10 @@ import { INearProver, Locker } from "./Locker.sol";
 contract ERC721Locker is IERC721Locker, Locker, AdminControlled {
     using Strings for uint256;
 
-    event ERC721Locked (
+    event Locked (
         address indexed token,
-        address indexed owner,
-        uint256 indexed tokenId,
+        address indexed sender,
+        string tokenId,
         string accountId
     );
 
@@ -34,6 +34,7 @@ contract ERC721Locker is IERC721Locker, Locker, AdminControlled {
         address recipient;
     }
 
+    // This reverse lookup is needed as token IDs on Near are strings and therefore this is needed for unlocking
     // NFT contract address -> string token ID -> uint256
     mapping(address => mapping(string => uint256)) public stringTokenIdToUnitForNft;
 
@@ -60,10 +61,12 @@ contract ERC721Locker is IERC721Locker, Locker, AdminControlled {
     }
 
     function lockToken(address _token, uint256 _tokenId, string memory _nearRecipientAccountId) public override {
-        require(_token != address(0), "lockToken: Token cannot be address zero");
-        stringTokenIdToUnitForNft[_token][_tokenId.toString()] = _tokenId;
+        string memory tokenIdAsString = _tokenId.toString();
+
+        stringTokenIdToUnitForNft[_token][tokenIdAsString] = _tokenId;
         IERC721(_token).transferFrom(msg.sender, address(this), _tokenId);
-        emit ERC721Locked(_token, msg.sender, _tokenId, _nearRecipientAccountId);
+
+        emit Locked(_token, msg.sender, tokenIdAsString, _nearRecipientAccountId);
     }
 
     function unlockToken(bytes calldata _proofData, uint64 _proofBlockHeader) external override {
