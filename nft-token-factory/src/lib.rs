@@ -110,7 +110,8 @@ impl NFTFactory {
             bridge_token_storage_deposit_required:
             near_contract_standards::fungible_token::FungibleToken::new(b"t".to_vec())
                 .account_storage_usage as Balance
-                * env::storage_byte_cost(), // todo this needs to be based on a nft
+                * env::storage_byte_cost(),
+            // todo storage needs to be based on a nft - https://github.com/near/near-sdk-rs/blob/c968730425c22be796566fbfc490ac8e38eafcaf/near-contract-standards/src/fungible_token/core_impl.rs#L87
             paused: Mask::default(),
         }
     }
