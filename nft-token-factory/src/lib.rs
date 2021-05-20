@@ -70,8 +70,8 @@ pub struct NFTFactory {
 #[ext_contract(ext_self)]
 pub trait ExtNFTFactory {
     #[result_serializer(borsh)]
-    fn finish_deposit(
-        &self,
+    fn finish_eth_to_near_transfer(
+        &mut self,
         #[callback]
         #[serializer(borsh)]
         verification_success: bool,
@@ -82,14 +82,14 @@ pub trait ExtNFTFactory {
     ) -> Promise;
 }
 
-#[ext_contract(ext_fungible_token)]
-pub trait NFT {
-    fn ft_transfer(&mut self, receiver_id: AccountId, amount: U128, memo: Option<String>);
-}
+// #[ext_contract(ext_fungible_token)]
+// pub trait NFT {
+//    fn ft_transfer(&mut self, receiver_id: AccountId, amount: U128, memo: Option<String>);
+// }
 
-#[ext_contract(ext_bridge_token)]
+#[ext_contract(ext_bridge_nft)]
 pub trait ExtBridgedNFT {
-    fn mint(&self, account_id: AccountId, amount: U128);
+    fn mint(&self, account_id: AccountId, token_id: String);
 }
 
 #[near_bindgen]
@@ -111,30 +111,35 @@ impl NFTFactory {
         }
     }
 
-    /// todo docs
-    #[payable]
-    #[result_serializer(borsh)]
-    // todo: how much GAS is required to execute this method with sending the tokens back and ensure we have enough
-    pub fn migrate_to_ethereum(&mut self, eth_recipient: String) -> ResultType {
-        // Predecessor must attach Near to migrate to ETH
-        let attached_deposit = env::attached_deposit();
-        if attached_deposit == 0 {
-            env::panic(b"Attached deposit must be greater than zero");
-        }
-
-        // If the method is paused or the eth recipient address is invalid, then we need to:
-        //  1) Return the attached deposit
-        //  2) Panic and tell the user why
-        let eth_recipient_clone = eth_recipient.clone();
-        if self.is_paused(PAUSE_MIGRATE_TO_ETH) || !is_valid_eth_address(eth_recipient_clone) {
-            env::panic(b"Method is either paused or ETH address is invalid");
-        }
-
-        ResultType::Withdraw {
-            amount: attached_deposit,
-            recipient: get_eth_address(eth_recipient),
-        }
+    /// Return all registered tokens
+    pub fn get_tokens(&self) -> Vec<String> {
+        self.tokens.iter().collect::<Vec<_>>()
     }
+
+    /// todo docs
+    // #[payable]
+    // #[result_serializer(borsh)]
+    // // todo: how much GAS is required to execute this method with sending the tokens back and ensure we have enough
+    // pub fn migrate_to_ethereum(&mut self, eth_recipient: String) -> ResultType {
+    //     // Predecessor must attach Near to migrate to ETH
+    //     let attached_deposit = env::attached_deposit();
+    //     if attached_deposit == 0 {
+    //         env::panic(b"Attached deposit must be greater than zero");
+    //     }
+    //
+    //     // If the method is paused or the eth recipient address is invalid, then we need to:
+    //     //  1) Return the attached deposit
+    //     //  2) Panic and tell the user why
+    //     let eth_recipient_clone = eth_recipient.clone();
+    //     if self.is_paused(PAUSE_MIGRATE_TO_ETH) || !is_valid_eth_address(eth_recipient_clone) {
+    //         env::panic(b"Method is either paused or ETH address is invalid");
+    //     }
+    //
+    //     ResultType::Withdraw {
+    //         amount: attached_deposit,
+    //         recipient: get_eth_address(eth_recipient),
+    //     }
+    // }
 
     #[payable]
     pub fn finalise_eth_to_near_transfer(&mut self, #[serializer(borsh)] proof: Proof) {
@@ -147,6 +152,12 @@ impl NFTFactory {
             "Event's address {} does not match locker address of this token {}",
             hex::encode(&event.locker),
             hex::encode(&self.locker),
+        );
+
+        assert!(
+            self.tokens.contains(&event.token),
+            "Bridge NFT for {} is not deployed yet",
+            event.token
         );
 
         let proof_1 = proof.clone();
@@ -164,12 +175,13 @@ impl NFTFactory {
             VERIFY_LOG_ENTRY_GAS,
         )
         .then(ext_self::finish_eth_to_near_transfer(
+            event.token,
             event.recipient,
             event.token_id,
             proof_1,
             &env::current_account_id(),
             env::attached_deposit(),
-            FINISH_FINALISE_GAS,
+            FINISH_FINALISE_GAS, // todo + mint GAS
         ));
     }
 
@@ -181,6 +193,7 @@ impl NFTFactory {
         #[callback]
         #[serializer(borsh)]
         verification_success: bool,
+        #[serializer(borsh)] token: String,
         #[serializer(borsh)] new_owner_id: AccountId,
         #[serializer(borsh)] token_id: String,
         #[serializer(borsh)] proof: Proof,
@@ -189,18 +202,17 @@ impl NFTFactory {
         assert!(verification_success, "Failed to verify the proof");
 
         let required_deposit = self.record_proof(&proof);
-        if env::attached_deposit() < required_deposit {
+        if env::attached_deposit() < required_deposit + self.bridge_token_storage_deposit_required {
             env::panic(b"Attached deposit is not sufficient to record proof");
         }
 
-        // todo
-        // ext_bridge_token::mint(
-        //     new_owner_id,
-        //     amount.into(),
-        //     &self.get_bridge_token_account_id(token),
-        //     env::attached_deposit() - required_deposit,
-        //     MINT_GAS,
-        // )
+        ext_bridge_nft::mint(
+            new_owner_id,
+            token_id,
+            &self.get_bridge_token_account_id(token),
+            env::attached_deposit() - required_deposit,
+            MINT_GAS,
+        )
     }
 
     // todo
@@ -268,20 +280,6 @@ impl NFTFactory {
 
         required_deposit
     }
-}
-
-#[ext_contract(ext_self)]
-pub trait ExtNearBridge {
-    #[result_serializer(borsh)]
-    fn finish_eth_to_near_transfer(
-        &mut self,
-        #[callback]
-        #[serializer(borsh)]
-        verification_success: bool,
-        #[serializer(borsh)] new_owner_id: AccountId,
-        #[serializer(borsh)] token_id: String,
-        #[serializer(borsh)] proof: Proof,
-    ) -> Promise;
 }
 
 admin_controlled::impl_admin_controlled!(NFTFactory, paused);

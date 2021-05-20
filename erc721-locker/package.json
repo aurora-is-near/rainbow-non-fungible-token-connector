@@ -3,9 +3,9 @@
   "version": "1.0.0",
   "description": "Used for bridging ERC721 assets to Near",
   "scripts": {
-    "compile": "npx hardhat compile",
-    "coverage": "npx hardhat coverage",
-    "test": "npx hardhat test"
+    "compile": "hardhat compile",
+    "coverage": "hardhat coverage",
+    "test": "hardhat test"
   },
   "author": "Near Foundation",
   "license": "MIT",
