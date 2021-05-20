@@ -3,7 +3,7 @@
 */
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::UnorderedSet;
-use near_sdk::{env, ext_contract, near_bindgen, AccountId, Balance, Gas, PanicOnDefault, Promise};
+use near_sdk::{env, ext_contract, near_bindgen, AccountId, Balance, Gas, PanicOnDefault, Promise, PublicKey};
 
 use admin_controlled::{AdminControlled, Mask};
 
@@ -18,6 +18,10 @@ mod locked_event;
 
 /// Gas to call finalise method.
 const FINISH_FINALISE_GAS: Gas = 50_000_000_000_000;
+
+/// Gas to call mint method on bridge nft.
+/// todo - this is for FT and needs to be updated for NFT
+const MINT_GAS: Gas = 50_000_000_000_000;
 
 const NO_DEPOSIT: Balance = 0;
 
@@ -106,7 +110,7 @@ impl NFTFactory {
             bridge_token_storage_deposit_required:
             near_contract_standards::fungible_token::FungibleToken::new(b"t".to_vec())
                 .account_storage_usage as Balance
-                * STORAGE_PRICE_PER_BYTE, // todo this needs to be based on a nft
+                * env::storage_byte_cost(), // todo this needs to be based on a nft
             paused: Mask::default(),
         }
     }
@@ -150,8 +154,8 @@ impl NFTFactory {
             event.locker_address,
             self.locker_address,
             "Event's address {} does not match locker address of this token {}",
-            hex::encode(&event.locker),
-            hex::encode(&self.locker),
+            hex::encode(&event.locker_address),
+            hex::encode(&self.locker_address),
         );
 
         assert!(
@@ -209,10 +213,10 @@ impl NFTFactory {
         ext_bridge_nft::mint(
             new_owner_id,
             token_id,
-            &self.get_bridge_token_account_id(token),
+            &self.get_nft_token_account_id(token),
             env::attached_deposit() - required_deposit,
             MINT_GAS,
-        )
+        );
     }
 
     // todo
@@ -250,11 +254,17 @@ impl NFTFactory {
 
     pub fn get_nft_token_account_id(&self, address: String) -> AccountId {
         let address = address.to_lowercase();
-        let _ = validate_eth_address(address.clone()); // todo check this is the correct function to call
+
+        assert!(
+            is_valid_eth_address(address.clone()),
+            "Invalid ETH address"
+        );
+
         assert!(
             self.tokens.contains(&address),
             "NFTToken with such address does not exist."
         );
+
         format!("{}.{}", address, env::current_account_id())
     }
 

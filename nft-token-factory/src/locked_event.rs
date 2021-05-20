@@ -1,7 +1,7 @@
 use crate::prover::{EthAddress, EthEvent, EthEventParams};
 use ethabi::{ParamType, Token};
 use hex::ToHex;
-use near_sdk::{AccountId, Balance};
+use near_sdk::{AccountId};
 
 /// Data that was emitted by the Ethereum Locked event.
 #[derive(Debug, Eq, PartialEq)]
@@ -54,11 +54,11 @@ impl LockedEvent {
             LockedEvent::event_params(),
             self.locker_address,
             vec![
-                hex::decode(self.token.clone()).unwrap()
-                hex::decode(self.sender.clone()).unwrap()
+                hex::decode(self.token.clone()).unwrap(),
+                hex::decode(self.sender.clone()).unwrap(),
             ],
             vec![
-                Token::String(self.token_id.into()),
+                Token::String(self.token_id.to_string()),
                 Token::String(self.recipient.clone()),
             ],
         )
