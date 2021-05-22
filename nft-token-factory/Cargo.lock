@@ -610,7 +610,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "near_bridge"
+name = "nft_token_factory"
 version = "0.1.0"
 dependencies = [
  "admin-controlled",
