@@ -18,6 +18,8 @@ mod locked_event;
 
 /// Gas to call finalise method.
 const FINISH_FINALISE_GAS: Gas = 50_000_000_000_000;
+const BRIDGE_TOKEN_NEW: Gas = 50_000_000_000_000;
+const BRIDGE_TOKEN_INIT_BALANCE: Balance = 50_000_000_000_000; // todo correct this value
 
 /// Gas to call mint method on bridge nft.
 /// todo - this is for FT and needs to be updated for NFT
@@ -111,7 +113,7 @@ impl NFTFactory {
             near_contract_standards::fungible_token::FungibleToken::new(b"t".to_vec())
                 .account_storage_usage as Balance
                 * env::storage_byte_cost(),
-            // todo storage needs to be based on a nft - https://github.com/near/near-sdk-rs/blob/c968730425c22be796566fbfc490ac8e38eafcaf/near-contract-standards/src/fungible_token/core_impl.rs#L87
+            // todo work out how to new bridge_nft.wasm so that we can use
             paused: Mask::default(),
         }
     }
@@ -214,44 +216,52 @@ impl NFTFactory {
         ext_bridge_nft::mint(
             new_owner_id,
             token_id,
-            &self.get_nft_token_account_id(token),
+            &self.get_nft_token_account_id(token), // todo - check what this call is doing?
             env::attached_deposit() - required_deposit,
             MINT_GAS,
         );
     }
 
-    // todo
-    // #[payable]
-    // pub fn deploy_bridge_token(&mut self, address: String) -> Promise {
-    //     self.check_not_paused(PAUSE_DEPLOY_TOKEN);
-    //     let address = address.to_lowercase();
-    //     let _ = validate_eth_address(address.clone());
-    //     assert!(
-    //         !self.tokens.contains(&address),
-    //         "BridgeToken contract already exists."
-    //     );
-    //     let initial_storage = env::storage_usage() as u128;
-    //     self.tokens.insert(&address);
-    //     let current_storage = env::storage_usage() as u128;
-    //     assert!(
-    //         env::attached_deposit()
-    //             >= BRIDGE_TOKEN_INIT_BALANCE
-    //             + STORAGE_PRICE_PER_BYTE * (current_storage - initial_storage),
-    //         "Not enough attached deposit to complete bridge token creation"
-    //     );
-    //     let bridge_token_account_id = format!("{}.{}", address, env::current_account_id());
-    //     Promise::new(bridge_token_account_id)
-    //         .create_account()
-    //         .transfer(BRIDGE_TOKEN_INIT_BALANCE)
-    //         .add_full_access_key(self.owner_pk.clone())
-    //         .deploy_contract(include_bytes!("../../res/bridge_token.wasm").to_vec())
-    //         .function_call(
-    //             b"new".to_vec(),
-    //             b"{}".to_vec(),
-    //             NO_DEPOSIT,
-    //             BRIDGE_TOKEN_NEW,
-    //         )
-    // }
+    #[payable]
+    pub fn deploy_bridge_token(&mut self, address: String) -> Promise {
+        self.check_not_paused(PAUSE_DEPLOY_TOKEN);
+
+        let address = address.to_lowercase();
+
+        assert!(
+            is_valid_eth_address(address.clone()),
+            "Invalid ETH address"
+        );
+
+        assert!(
+            !self.tokens.contains(&address),
+            "Bridge NFT contract already exists."
+        );
+
+        let initial_storage = env::storage_usage() as u128;
+        self.tokens.insert(&address);
+        let current_storage = env::storage_usage() as u128;
+
+        assert!(
+            env::attached_deposit()
+                >= BRIDGE_TOKEN_INIT_BALANCE
+                + env::storage_byte_cost() * (current_storage - initial_storage),
+            "Not enough attached deposit to complete bridge nft token creation"
+        );
+
+        let bridge_token_account_id = format!("{}.{}", address, env::current_account_id());
+        Promise::new(bridge_token_account_id)
+            .create_account()
+            .transfer(BRIDGE_TOKEN_INIT_BALANCE)
+            .add_full_access_key(self.owner_pk.clone())
+            .deploy_contract(include_bytes!("../../res/bridge_nft.wasm").to_vec())
+            .function_call(
+                b"new".to_vec(), // todo - check these params are valid
+                b"{}".to_vec(),
+                NO_DEPOSIT,
+                BRIDGE_TOKEN_NEW,
+            )
+    }
 
     pub fn get_nft_token_account_id(&self, address: String) -> AccountId {
         let address = address.to_lowercase();
@@ -295,209 +305,4 @@ impl NFTFactory {
 
 admin_controlled::impl_admin_controlled!(NFTFactory, paused);
 
-#[cfg(not(target_arch = "wasm32"))]
-#[cfg(test)]
-mod tests {
-    use near_sdk::test_utils::VMContextBuilder;
-    use near_sdk::{testing_env, MockedBlockchain};
-
-    use super::*;
-    use near_sdk::env::sha256;
-    use std::convert::TryInto;
-    use std::panic;
-    use uint::rustc_hex::{FromHex, ToHex};
-
-    const UNPAUSE_ALL: Mask = 0;
-
-    macro_rules! inner_set_env {
-        ($builder:ident) => {
-            $builder
-        };
-
-        ($builder:ident, $key:ident:$value:expr $(,$key_tail:ident:$value_tail:expr)*) => {
-            {
-               $builder.$key($value.try_into().unwrap());
-               inner_set_env!($builder $(,$key_tail:$value_tail)*)
-            }
-        };
-    }
-
-    macro_rules! set_env {
-        ($($key:ident:$value:expr),* $(,)?) => {
-            let mut builder = VMContextBuilder::new();
-            let mut builder = &mut builder;
-            builder = inner_set_env!(builder, $($key: $value),*);
-            testing_env!(builder.build());
-        };
-    }
-
-    fn alice_near_account() -> AccountId {
-        "alice.near".to_string()
-    }
-    fn prover_near_account() -> AccountId {
-        "prover".to_string()
-    }
-    fn e_near_eth_address() -> String {
-        "68a3637ba6e75c0f66b61a42639c4e9fcd3d4824".to_string()
-    }
-    fn alice_eth_address() -> String {
-        "25ac31a08eba29067ba4637788d1dbfb893cebf1".to_string()
-    }
-    fn invalid_eth_address() -> String {
-        "25Ac31A08EBA29067Ba4637788d1DbFB893cEBf".to_string()
-    }
-
-    /// Generate a valid ethereum address
-    fn ethereum_address_from_id(id: u8) -> String {
-        let mut buffer = vec![id];
-        sha256(buffer.as_mut())
-            .into_iter()
-            .take(20)
-            .collect::<Vec<_>>()
-            .to_hex()
-    }
-
-    fn sample_proof() -> Proof {
-        Proof {
-            log_index: 0,
-            log_entry_data: vec![],
-            receipt_index: 0,
-            receipt_data: vec![],
-            header_data: vec![],
-            proof: vec![],
-        }
-    }
-
-    fn create_proof(e_near: String) -> Proof {
-        let event_data = TransferToNearInitiatedEvent {
-            e_near_address: e_near
-                .from_hex::<Vec<_>>()
-                .unwrap()
-                .as_slice()
-                .try_into()
-                .unwrap(),
-            sender: "00005474e89094c44da98b954eedeac495271d0f".to_string(),
-            amount: 1000,
-            recipient: "123".to_string(),
-        };
-
-        Proof {
-            log_index: 0,
-            log_entry_data: event_data.to_log_entry_data(),
-            receipt_index: 0,
-            receipt_data: vec![],
-            header_data: vec![],
-            proof: vec![],
-        }
-    }
-
-    #[test]
-    fn can_migrate_near_to_eth_with_valid_params() {
-        set_env!(predecessor_account_id: alice_near_account());
-
-        let mut contract = NearBridge::new(prover_near_account(), e_near_eth_address());
-
-        // lets deposit 1 Near
-        let deposit_amount = 1_000_000_000_000_000_000_000_000u128;
-        set_env!(
-            predecessor_account_id: alice_near_account(),
-            attached_deposit: deposit_amount,
-        );
-
-        contract.migrate_to_ethereum(alice_eth_address());
-    }
-
-    #[test]
-    #[should_panic]
-    fn migrate_near_to_eth_panics_when_attached_deposit_is_zero() {
-        set_env!(predecessor_account_id: alice_near_account());
-
-        let mut contract = NearBridge::new(prover_near_account(), e_near_eth_address());
-
-        contract.migrate_to_ethereum(alice_eth_address());
-    }
-
-    #[test]
-    #[should_panic]
-    fn migrate_near_to_eth_panics_when_contract_is_paused() {
-        set_env!(predecessor_account_id: alice_near_account());
-
-        let mut contract = NearBridge::new(prover_near_account(), e_near_eth_address());
-
-        contract.set_paused(PAUSE_MIGRATE_TO_ETH);
-
-        // lets deposit 1 Near
-        let deposit_amount = 1_000_000_000_000_000_000_000_000u128;
-        set_env!(
-            predecessor_account_id: alice_near_account(),
-            attached_deposit: deposit_amount,
-        );
-
-        contract.migrate_to_ethereum(alice_eth_address());
-    }
-
-    #[test]
-    #[should_panic]
-    fn migrate_near_to_eth_panics_when_eth_address_is_invalid() {
-        set_env!(predecessor_account_id: alice_near_account());
-
-        let mut contract = NearBridge::new(prover_near_account(), e_near_eth_address());
-
-        contract.migrate_to_ethereum(invalid_eth_address());
-    }
-
-    #[test]
-    #[should_panic]
-    fn finalise_eth_to_near_transfer_panics_when_contract_is_paused() {
-        set_env!(predecessor_account_id: alice_near_account());
-
-        let mut contract = NearBridge::new(prover_near_account(), e_near_eth_address());
-
-        contract.set_paused(PAUSE_ETH_TO_NEAR_TRANSFER);
-
-        contract.finalise_eth_to_near_transfer(sample_proof());
-    }
-
-    #[test]
-    #[should_panic]
-    fn finalise_eth_to_near_transfer_panics_when_event_originates_from_wrong_contract() {
-        set_env!(predecessor_account_id: alice_near_account());
-
-        let mut contract = NearBridge::new(prover_near_account(), e_near_eth_address());
-
-        contract.finalise_eth_to_near_transfer(create_proof(alice_eth_address()));
-    }
-
-    #[test]
-    #[should_panic]
-    fn finish_eth_to_near_transfer_panics_if_attached_deposit_is_not_sufficient_to_record_proof() {
-        set_env!(predecessor_account_id: alice_near_account());
-
-        let mut contract = NearBridge::new(prover_near_account(), e_near_eth_address());
-
-        contract.finalise_eth_to_near_transfer(create_proof(e_near_eth_address()));
-    }
-
-    #[test]
-    fn finalise_eth_to_near_transfer_works_with_valid_params() {
-        set_env!(predecessor_account_id: alice_near_account());
-
-        let mut contract = NearBridge::new(prover_near_account(), e_near_eth_address());
-
-        // Alice deposit 1 Near to migrate to eth
-        let deposit_amount = 1_000_000_000_000_000_000_000_000u128;
-        set_env!(
-            predecessor_account_id: alice_near_account(),
-            attached_deposit: deposit_amount,
-        );
-
-        contract.migrate_to_ethereum(alice_eth_address());
-
-        // todo adjust attached deposit down
-
-        // Lets suppose Alice migrates back
-        contract.finalise_eth_to_near_transfer(create_proof(e_near_eth_address()))
-
-        // todo asserts i.e. that alice has received the 1 near back etc.
-    }
-}
+// todo - add in tests
