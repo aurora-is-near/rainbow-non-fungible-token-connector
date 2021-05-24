@@ -5,8 +5,10 @@ use near_sdk::collections::{LazyOption, LookupMap, UnorderedMap, UnorderedSet};
 use near_sdk::json_types::{Base64VecU8, ValidAccountId, U64};
 use near_sdk::serde::{Deserialize, Serialize};
 use near_sdk::{
-    env, near_bindgen, AccountId, Balance, CryptoHash, PanicOnDefault, Promise, StorageUsage,
+    env, ext_contract, near_bindgen, AccountId, Balance, CryptoHash, PanicOnDefault, Promise, StorageUsage, Gas
 };
+
+use admin_controlled::{AdminControlled, Mask};
 
 use crate::internal::*;
 pub use crate::metadata::*;
@@ -21,6 +23,24 @@ mod nft_core;
 mod token;
 
 near_sdk::setup_alloc!();
+
+/// Gas to call finish withdraw method on factory.
+const FINISH_WITHDRAW_GAS: Gas = 50_000_000_000_000; // todo check if this value is valid
+
+const NO_DEPOSIT: Balance = 0;
+
+const PAUSE_WITHDRAW: Mask = 1 << 0;
+
+#[ext_contract(ext_bridge_nft_factory)]
+pub trait ExtBridgeNFTFactory {
+    #[result_serializer(borsh)]
+    fn finish_withdraw_to_eth(
+        &self,
+        #[serializer(borsh)] token_id: String,
+        #[serializer(borsh)] recipient: AccountId,
+    ) -> Promise;
+}
+
 
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
@@ -37,6 +57,8 @@ pub struct Contract {
     pub extra_storage_in_bytes_per_token: StorageUsage,
 
     pub metadata: LazyOption<NFTMetadata>,
+
+    paused: Mask,
 }
 
 /// Helper structure to for keys of the persistent collections.
@@ -65,6 +87,7 @@ impl Contract {
                 StorageKey::NftMetadata.try_to_vec().unwrap(),
                 Some(&metadata),
             ),
+            paused: Mask::default(),
         };
 
         this.measure_min_token_storage_cost();
@@ -92,7 +115,36 @@ impl Contract {
 
         self.tokens_per_owner.remove(&tmp_account_id);
     }
+
+    #[payable]
+    pub fn withdraw(&mut self, token_id: String, recipient: String) -> Promise {
+        self.check_not_paused(PAUSE_WITHDRAW);
+
+        assert_one_yocto();
+        Promise::new(env::predecessor_account_id()).transfer(1);
+
+        self.tokens_by_id.remove(&token_id);
+        self.token_metadata_by_id.remove(&token_id);
+
+        // todo remove
+        //self.internal_add_token_to_owner(&token.owner_id, &token_id);
+
+        // todo
+        // self.token
+        //     .internal_withdraw(&env::predecessor_account_id(), amount.into());
+        //
+
+        ext_bridge_nft_factory::finish_withdraw_to_eth(
+            token_id,
+            recipient,
+            &self.owner_id,
+            NO_DEPOSIT,
+            FINISH_WITHDRAW_GAS,
+        ) // todo check all params valid
+    }
 }
+
+admin_controlled::impl_admin_controlled!(Contract, paused);
 
 #[cfg(test)]
 mod tests {
