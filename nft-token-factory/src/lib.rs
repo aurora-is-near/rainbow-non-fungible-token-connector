@@ -123,30 +123,40 @@ impl NFTFactory {
         self.tokens.iter().collect::<Vec<_>>()
     }
 
-    /// todo docs
-    // #[payable]
-    // #[result_serializer(borsh)]
-    // // todo: how much GAS is required to execute this method with sending the tokens back and ensure we have enough
-    // pub fn migrate_to_ethereum(&mut self, eth_recipient: String) -> ResultType {
-    //     // Predecessor must attach Near to migrate to ETH
-    //     let attached_deposit = env::attached_deposit();
-    //     if attached_deposit == 0 {
-    //         env::panic(b"Attached deposit must be greater than zero");
-    //     }
-    //
-    //     // If the method is paused or the eth recipient address is invalid, then we need to:
-    //     //  1) Return the attached deposit
-    //     //  2) Panic and tell the user why
-    //     let eth_recipient_clone = eth_recipient.clone();
-    //     if self.is_paused(PAUSE_MIGRATE_TO_ETH) || !is_valid_eth_address(eth_recipient_clone) {
-    //         env::panic(b"Method is either paused or ETH address is invalid");
-    //     }
-    //
-    //     ResultType::Withdraw {
-    //         amount: attached_deposit,
-    //         recipient: get_eth_address(eth_recipient),
-    //     }
-    // }
+    /// Finalise the withdraw to eth from a sub NFT contract. Only this bridge can emit the execution outcome to be processed on the Eth side
+    /// Caller must be <token_address>.<current_account_id>, where <token_address> exists in the `tokens`.
+    // todo: how much GAS is required to execute this method
+    #[result_serializer(borsh)]
+    pub fn finish_withdraw_to_eth(
+        &mut self,
+        #[serializer(borsh)] token_id: String,
+        #[serializer(borsh)] recipient: String,
+    ) -> ResultType {
+        self.check_not_paused(PAUSE_NEAR_TO_ETH_TRANSFER);
+
+        let token = env::predecessor_account_id();
+
+        let parts: Vec<&str> = token.split(".").collect();
+        assert_eq!(
+            token,
+            format!("{}.{}", parts[0], env::current_account_id()),
+            "Only sub accounts of NFT Factory can call this method."
+        );
+
+        assert!(
+            self.tokens.contains(&parts[0].to_string()),
+            "Such Bridge NFT token does not exist."
+        );
+
+        let token_address = get_eth_address(parts[0].to_string());
+        let recipient_address = get_eth_address(recipient);
+
+        ResultType::Withdraw {
+            token_id,
+            token: token_address,
+            recipient: recipient_address,
+        }
+    }
 
     #[payable]
     pub fn finalise_eth_to_near_transfer(&mut self, #[serializer(borsh)] proof: Proof) {
