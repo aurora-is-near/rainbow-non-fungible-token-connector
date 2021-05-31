@@ -123,24 +123,30 @@ impl Contract {
         assert_one_yocto();
         Promise::new(env::predecessor_account_id()).transfer(1);
 
+        // check the token exists and that the caller is the owner
+        let token = self.tokens_by_id.get(&token_id).expect("Token not found");
+
+        let predecessor_account_id = env::predecessor_account_id();
+        if &predecessor_account_id != &token.owner_id && !token.approved_account_ids.contains_key(&predecessor_account_id) {
+            env::panic(b"Unauthorized");
+        }
+
+        // burn the token
         self.tokens_by_id.remove(&token_id);
         self.token_metadata_by_id.remove(&token_id);
 
-        // todo remove
-        //self.internal_add_token_to_owner(&token.owner_id, &token_id);
+        let mut tokens_set = self.tokens_per_owner.get(&predecessor_account_id).unwrap();
+        tokens_set.remove(&token_id);
+        self.tokens_per_owner.insert(&predecessor_account_id, &tokens_set);
 
-        // todo
-        // self.token
-        //     .internal_withdraw(&env::predecessor_account_id(), amount.into());
-        //
-
+        // call the nft factory to finish the withdrawal to eth
         ext_bridge_nft_factory::finish_withdraw_to_eth(
             token_id,
             recipient,
             &self.owner_id,
             NO_DEPOSIT,
             FINISH_WITHDRAW_GAS,
-        ) // todo check all params valid
+        )
     }
 }
 
