@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-pragma solidity 0.8.4;
+pragma solidity 0.6.12;
 
 import "rainbow-bridge/contracts/eth/nearprover/contracts/INearProver.sol";
 import "rainbow-bridge/contracts/eth/nearprover/contracts/ProofDecoder.sol";

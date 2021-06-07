@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-pragma solidity 0.8.4;
+pragma solidity 0.6.12;
 
 import { IERC721 } from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import { Strings } from "@openzeppelin/contracts/utils/Strings.sol";
@@ -44,7 +44,7 @@ contract ERC721Locker is IERC721Locker, Locker, AdminControlled {
         uint64 _minBlockAcceptanceHeight,
         address _admin,
         uint256 _pausedFlags
-    ) AdminControlled(_admin, _pausedFlags) {
+    ) AdminControlled(_admin, _pausedFlags) public {
 
         require(address(_nearProver) != address(0), "Invalid near prover");
         require(_nearTokenFactory.length > 0, "Invalid near token factory");
