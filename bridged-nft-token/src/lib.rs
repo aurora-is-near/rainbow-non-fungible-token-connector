@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LazyOption, LookupMap, UnorderedMap, UnorderedSet};
-use near_sdk::json_types::{Base64VecU8, ValidAccountId, U64};
+use near_sdk::json_types::{Base64VecU8, U64, ValidAccountId};
 use near_sdk::serde::{Deserialize, Serialize};
 use near_sdk::{
     env, ext_contract, near_bindgen, AccountId, Balance, CryptoHash, PanicOnDefault, Promise, StorageUsage, Gas
@@ -73,19 +73,22 @@ pub enum StorageKey {
 
 #[near_bindgen]
 impl Contract {
+
+    /// This will make the deployer the owner of the token
+    /// Metadata will need to be set using set_metadata as the owner
     #[init]
-    pub fn new(owner_id: ValidAccountId, metadata: NFTMetadata) -> Self {
+    pub fn new() -> Self {
         let mut this = Self {
             tokens_per_owner: LookupMap::new(StorageKey::TokensPerOwner.try_to_vec().unwrap()),
             tokens_by_id: LookupMap::new(StorageKey::TokensById.try_to_vec().unwrap()),
             token_metadata_by_id: UnorderedMap::new(
                 StorageKey::TokenMetadataById.try_to_vec().unwrap(),
             ),
-            owner_id: owner_id.into(),
+            owner_id: env::predecessor_account_id(),
             extra_storage_in_bytes_per_token: 0,
             metadata: LazyOption::new(
                 StorageKey::NftMetadata.try_to_vec().unwrap(),
-                Some(&metadata),
+                None,
             ),
             paused: Mask::default(),
         };
@@ -93,6 +96,15 @@ impl Contract {
         this.measure_min_token_storage_cost();
 
         this
+    }
+
+    pub fn set_metadata(&mut self, metadata: NFTMetadata) {
+        self.assert_owner();
+
+        self.metadata = LazyOption::new(
+            StorageKey::NftMetadata.try_to_vec().unwrap(),
+            Some(&metadata),
+        )
     }
 
     fn measure_min_token_storage_cost(&mut self) {
@@ -222,10 +234,7 @@ mod tests {
     fn helper_mint() -> (Contract, VMContext) {
         let context = get_context(nft(), 10u128.pow(24));
         testing_env!(context.clone());
-        let mut contract = Contract::new(
-            ValidAccountId::try_from(nft()).unwrap(),
-            helper_contract_metadata(),
-        );
+        let mut contract = Contract::new();
         contract.nft_mint("0".to_string(), helper_token_metadata());
         (contract, context)
     }
@@ -238,12 +247,12 @@ mod tests {
     #[test]
     #[should_panic(expected = "Owner's method")]
     fn failed_mint_from_non_owner() {
-        let context = get_context(alice(), 7660000000000000000000);
+        let context = get_context(alice(), 8460000000000000000000);
         testing_env!(context);
-        let mut contract = Contract::new(
-            ValidAccountId::try_from(nft()).unwrap(),
-            helper_contract_metadata(),
-        );
+        let mut contract = Contract::new();
+
+        let context = get_context(bob(), 8460000000000000000000);
+        testing_env!(context);
         contract.nft_mint("0".to_string(), helper_token_metadata());
     }
 

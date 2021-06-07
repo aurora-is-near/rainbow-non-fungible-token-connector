@@ -19,7 +19,8 @@ mod locked_event;
 /// Gas to call finalise method.
 const FINISH_FINALISE_GAS: Gas = 50_000_000_000_000;
 const BRIDGE_TOKEN_NEW: Gas = 50_000_000_000_000;
-const BRIDGE_TOKEN_INIT_BALANCE: Balance = 50_000_000_000_000; // todo correct this value
+const BRIDGE_TOKEN_INIT_BALANCE: Balance = 50_000_000_000_000; // todo correct this value to mainnet value
+const BRIDGE_TOKEN_NFT_BALANCE_REQUIRED: Balance = 50_000_000_000_000; // todo correct this value to mainnet value
 
 /// Gas to call mint method on bridge nft.
 /// todo - this is for FT and needs to be updated for NFT
@@ -88,11 +89,6 @@ pub trait ExtNFTFactory {
     ) -> Promise;
 }
 
-// #[ext_contract(ext_fungible_token)]
-// pub trait NFT {
-//    fn ft_transfer(&mut self, receiver_id: AccountId, amount: U128, memo: Option<String>);
-// }
-
 #[ext_contract(ext_bridge_nft)]
 pub trait ExtBridgedNFT {
     fn mint(&self, account_id: AccountId, token_id: String);
@@ -109,11 +105,7 @@ impl NFTFactory {
             tokens: UnorderedSet::new(b"t".to_vec()),
             used_events: UnorderedSet::new(b"u".to_vec()),
             owner_pk: env::signer_account_pk(),
-            bridge_token_storage_deposit_required:
-            near_contract_standards::fungible_token::FungibleToken::new(b"t".to_vec())
-                .account_storage_usage as Balance
-                * env::storage_byte_cost(),
-            // todo work out how to new bridge_nft.wasm so that we can use
+            bridge_token_storage_deposit_required: BRIDGE_TOKEN_NFT_BALANCE_REQUIRED, // todo work out how to new up a bridge NFT so that we can know exact storage requirement or update this with the real mainnet value
             paused: Mask::default(),
         }
     }
@@ -226,7 +218,7 @@ impl NFTFactory {
         ext_bridge_nft::mint(
             new_owner_id,
             token_id,
-            &self.get_nft_token_account_id(token), // todo - check what this call is doing?
+            &self.get_nft_token_account_id(token),
             env::attached_deposit() - required_deposit,
             MINT_GAS,
         );
@@ -266,7 +258,7 @@ impl NFTFactory {
             .add_full_access_key(self.owner_pk.clone())
             .deploy_contract(include_bytes!("../../res/bridge_nft.wasm").to_vec())
             .function_call(
-                b"new".to_vec(), // todo - check these params are valid
+                b"new".to_vec(),
                 b"{}".to_vec(),
                 NO_DEPOSIT,
                 BRIDGE_TOKEN_NEW,
