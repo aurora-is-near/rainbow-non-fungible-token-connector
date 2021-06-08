@@ -231,34 +231,34 @@ mod tests {
         }
     }
 
-    fn helper_mint() -> (Contract, VMContext) {
-        let context = get_context(nft(), 10u128.pow(24));
+    fn helper_mint(recipient: AccountId) -> (Contract, VMContext) {
+        let context = get_context(nft(), 11u128.pow(24));
         testing_env!(context.clone());
         let mut contract = Contract::new();
-        contract.nft_mint("0".to_string(), helper_token_metadata());
+        contract.nft_mint("0".to_string(), recipient, helper_token_metadata());
         (contract, context)
     }
 
     #[test]
     fn basic_mint_from_owner() {
-        helper_mint();
+        helper_mint(nft());
     }
 
     #[test]
     #[should_panic(expected = "Owner's method")]
-    fn failed_mint_from_non_owner() {
+    fn failed_mint_from_non_contract_owner() {
         let context = get_context(alice(), 8460000000000000000000);
         testing_env!(context);
         let mut contract = Contract::new();
 
         let context = get_context(bob(), 8460000000000000000000);
         testing_env!(context);
-        contract.nft_mint("0".to_string(), helper_token_metadata());
+        contract.nft_mint("0".to_string(), nft(), helper_token_metadata());
     }
 
     #[test]
     fn simple_transfer() {
-        let (mut contract, mut context) = helper_mint();
+        let (mut contract, mut context) = helper_mint(nft());
         let token_info = contract.nft_token("0".to_string());
         assert!(
             token_info.is_some(),
@@ -283,8 +283,48 @@ mod tests {
 
     #[test]
     #[should_panic(expected = "Requires attached deposit of exactly 1 yoctoNEAR")]
+    fn failed_withdraw_needs_one_yocto() {
+        let (mut contract, _) = helper_mint(nft());
+        contract.withdraw(
+            "0".to_string(),
+            "0xfaaf".to_string()
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "Token not found")]
+    fn failed_withdraw_when_token_not_found() {
+        let (mut contract, mut context) = helper_mint(bob());
+
+        context.predecessor_account_id = alice();
+        context.attached_deposit = 1;
+        testing_env!(context.clone());
+
+        contract.withdraw(
+            "3".to_string(),
+            "0xfaaf".to_string()
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "Unauthorized")]
+    fn failed_withdraw_from_non_token_owner() {
+        let (mut contract, mut context) = helper_mint(bob());
+
+        context.predecessor_account_id = alice();
+        context.attached_deposit = 1;
+        testing_env!(context.clone());
+
+        contract.withdraw(
+            "0".to_string(),
+            "0xfaaf".to_string()
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "Requires attached deposit of exactly 1 yoctoNEAR")]
     fn failed_simple_transfer_needs_one_yocto() {
-        let (mut contract, _) = helper_mint();
+        let (mut contract, _) = helper_mint(nft());
         contract.nft_transfer(
             ValidAccountId::try_from(bob()).unwrap(),
             "0".to_string(),
@@ -295,7 +335,7 @@ mod tests {
 
     #[test]
     fn transfer_using_approver() {
-        let (mut contract, mut context) = helper_mint();
+        let (mut contract, mut context) = helper_mint(nft());
         let mut token_info = contract.nft_token("0".to_string());
         assert!(
             token_info.is_some(),
@@ -359,7 +399,7 @@ mod tests {
     #[test]
     #[should_panic(expected = "Unauthorized")]
     fn failed_transfer_using_unauthorized_approver() {
-        let (mut contract, mut context) = helper_mint();
+        let (mut contract, mut context) = helper_mint(nft());
         contract.nft_approve(
             "0".to_string(),
             ValidAccountId::try_from(alice()).unwrap(),
