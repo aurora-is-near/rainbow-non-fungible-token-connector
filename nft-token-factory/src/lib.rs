@@ -19,14 +19,12 @@ pub mod prover;
 mod locked_event;
 
 /// Gas to call finalise method.
-const FINISH_FINALISE_GAS: Gas = 50_000_000_000_000;
-const BRIDGE_TOKEN_NEW: Gas = 50_000_000_000_000;
+const FINISH_FINALISE_GAS: Gas = 50_000_000_000_000; // todo correct this value to mainnet value
+const BRIDGE_TOKEN_NEW: Gas = 50_000_000_000_000; // todo correct this value to mainnet value
 const BRIDGE_TOKEN_INIT_BALANCE: Balance = 50_000_000_000_000; // todo correct this value to mainnet value
-const BRIDGE_TOKEN_NFT_BALANCE_REQUIRED: Balance = 50_000_000_000_000; // todo correct this value to mainnet value
 
 /// Gas to call mint method on bridge nft.
-/// todo - this is for FT and needs to be updated for NFT
-const MINT_GAS: Gas = 50_000_000_000_000;
+const MINT_GAS: Gas = 50_000_000_000_000; // todo correct this value to mainnet value
 
 const NO_DEPOSIT: Balance = 0;
 
@@ -123,7 +121,7 @@ impl NFTFactory {
             tokens: UnorderedSet::new(b"t".to_vec()),
             used_events: UnorderedSet::new(b"u".to_vec()),
             owner_pk: env::signer_account_pk(),
-            bridge_token_storage_deposit_required: BRIDGE_TOKEN_NFT_BALANCE_REQUIRED, // todo call measure_min_token_storage_cost when first token is deployed and update this value
+            bridge_token_storage_deposit_required: env::storage_byte_cost() * 237, // this can be verified by calling storage_cost_per_nft() in bridge_nft.wasm when deployed
             paused: Mask::default(),
         }
     }
@@ -208,7 +206,7 @@ impl NFTFactory {
             proof_1,
             &env::current_account_id(),
             env::attached_deposit(),
-            FINISH_FINALISE_GAS, // todo + mint GAS
+            FINISH_FINALISE_GAS + MINT_GAS,
         ));
     }
 
@@ -249,7 +247,7 @@ impl NFTFactory {
                 extra: None,
                 reference: None,
                 reference_hash: None,
-            }, // todo we could store token URI at a min from an ETH event or have an update method
+            }, // todo we could store token URI at a minimum from an ETH event or have an update method
             &self.get_nft_token_account_id(token),
             env::attached_deposit() - required_deposit,
             MINT_GAS,
@@ -292,7 +290,7 @@ impl NFTFactory {
             .function_call(
                 b"new".to_vec(),
                 b"{}".to_vec(),
-                NO_DEPOSIT, // todo - this must surely take up some storage. Supply a generous value. Check on testnet
+                NO_DEPOSIT,
                 BRIDGE_TOKEN_NEW,
             )
     }

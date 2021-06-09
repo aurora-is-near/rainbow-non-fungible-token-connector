@@ -25,7 +25,7 @@ mod token;
 near_sdk::setup_alloc!();
 
 /// Gas to call finish withdraw method on factory.
-const FINISH_WITHDRAW_GAS: Gas = 50_000_000_000_000; // todo check if this value is valid
+const FINISH_WITHDRAW_GAS: Gas = 50_000_000_000_000; // todo change to mainnet
 
 const NO_DEPOSIT: Balance = 0;
 
@@ -126,6 +126,10 @@ impl Contract {
             tokens_per_owner_entry_in_bytes + owner_id_extra_cost_in_bytes;
 
         self.tokens_per_owner.remove(&tmp_account_id);
+    }
+
+    pub fn storage_cost_per_nft(&self) -> StorageUsage {
+        self.extra_storage_in_bytes_per_token
     }
 
     #[payable]
