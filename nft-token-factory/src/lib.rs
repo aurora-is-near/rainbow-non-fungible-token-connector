@@ -40,9 +40,9 @@ const PAUSE_NEAR_TO_ETH_TRANSFER: Mask = 1 << 1;
 #[derive(Debug, Eq, PartialEq, BorshSerialize, BorshDeserialize)]
 pub enum ResultType {
     Withdraw {
-        token_id: String,
         token: EthAddress,
         recipient: EthAddress,
+        token_id: String,
     },
     Lock {
         token: String,
@@ -123,7 +123,7 @@ impl NFTFactory {
             tokens: UnorderedSet::new(b"t".to_vec()),
             used_events: UnorderedSet::new(b"u".to_vec()),
             owner_pk: env::signer_account_pk(),
-            bridge_token_storage_deposit_required: BRIDGE_TOKEN_NFT_BALANCE_REQUIRED, // todo work out how to new up a bridge NFT so that we can know exact storage requirement or update this with the real mainnet value
+            bridge_token_storage_deposit_required: BRIDGE_TOKEN_NFT_BALANCE_REQUIRED, // todo call measure_min_token_storage_cost when first token is deployed and update this value
             paused: Mask::default(),
         }
     }
@@ -162,9 +162,9 @@ impl NFTFactory {
         let recipient_address = get_eth_address(recipient);
 
         ResultType::Withdraw {
-            token_id,
             token: token_address,
             recipient: recipient_address,
+            token_id,
         }
     }
 
@@ -292,7 +292,7 @@ impl NFTFactory {
             .function_call(
                 b"new".to_vec(),
                 b"{}".to_vec(),
-                NO_DEPOSIT,
+                NO_DEPOSIT, // todo - this must surely take up some storage. Supply a generous value. Check on testnet
                 BRIDGE_TOKEN_NEW,
             )
     }

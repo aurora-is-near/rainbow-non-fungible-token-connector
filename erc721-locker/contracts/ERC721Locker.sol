@@ -27,13 +27,6 @@ contract ERC721Locker is IERC721Locker, Locker, AdminControlled {
         address recipient
     );
 
-    // Function output from burning non-fungible token on Near side.
-    struct BurnResult {
-        string tokenId; // Near NFT token ID is a string
-        address token;
-        address recipient;
-    }
-
     // This reverse lookup is needed as token IDs on Near are strings and therefore this is needed for unlocking
     // NFT contract address -> string token ID -> uint256
     mapping(address => mapping(string => uint256)) public stringTokenIdToUnitForNft;
@@ -54,13 +47,13 @@ contract ERC721Locker is IERC721Locker, Locker, AdminControlled {
         prover = _nearProver;
     }
 
-    function lockTokens(address _token, uint256[] calldata _tokenIds, string calldata _nearRecipientAccountId) external {
+    function migrateMultipleTokensToNear(address _token, uint256[] calldata _tokenIds, string calldata _nearRecipientAccountId) external override {
         for(uint i = 0; i < _tokenIds.length; i++) {
-            lockToken(_token, _tokenIds[i], _nearRecipientAccountId);
+            migrateTokenToNear(_token, _tokenIds[i], _nearRecipientAccountId);
         }
     }
 
-    function lockToken(address _token, uint256 _tokenId, string memory _nearRecipientAccountId) public override {
+    function migrateTokenToNear(address _token, uint256 _tokenId, string memory _nearRecipientAccountId) public override {
         string memory tokenIdAsString = _tokenId.toString();
 
         stringTokenIdToUnitForNft[_token][tokenIdAsString] = _tokenId;
@@ -69,27 +62,22 @@ contract ERC721Locker is IERC721Locker, Locker, AdminControlled {
         emit Locked(_token, msg.sender, tokenIdAsString, _nearRecipientAccountId);
     }
 
-    function unlockToken(bytes calldata _proofData, uint64 _proofBlockHeader) external override {
+    function finishNearToEthMigration(bytes calldata _proofData, uint64 _proofBlockHeader) external override {
         ProofDecoder.ExecutionStatus memory status = _parseAndConsumeProof(_proofData, _proofBlockHeader);
-        BurnResult memory result = _decodeBurnResult(status.successValue);
 
-        uint256 tokenId = stringTokenIdToUnitForNft[result.token][result.tokenId];
+        Borsh.Data memory borshDataFromProof = Borsh.from(status.successValue);
 
-        IERC721(result.token).safeTransferFrom(address(this), result.recipient, tokenId);
-
-        emit Unlocked(result.token, tokenId, result.recipient);
-    }
-
-    function _decodeBurnResult(bytes memory data) internal pure returns(BurnResult memory result) {
-        Borsh.Data memory borshData = Borsh.from(data);
-
-        uint8 flag = borshData.decodeU8();
+        uint8 flag = borshDataFromProof.decodeU8();
         require(flag == 0, "ERR_NOT_WITHDRAW_RESULT");
 
-        return BurnResult({
-            tokenId: string(borshData.decodeBytes()),
-            token: address(uint160(borshData.decodeBytes20())),
-            recipient: address(uint160(borshData.decodeBytes20()))
-        });
+        address nftAddress = address(uint160(borshDataFromProof.decodeBytes20()));
+        address recipient = address(uint160(borshDataFromProof.decodeBytes20()));
+        string memory tokenIdAsString = string(borshDataFromProof.decodeBytes());
+
+        uint256 tokenId = stringTokenIdToUnitForNft[nftAddress][tokenIdAsString];
+
+        IERC721(nftAddress).safeTransferFrom(address(this), recipient, tokenId);
+
+        emit Unlocked(nftAddress, tokenId, recipient);
     }
 }

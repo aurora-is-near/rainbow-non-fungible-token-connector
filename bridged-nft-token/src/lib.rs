@@ -132,8 +132,8 @@ impl Contract {
     pub fn withdraw(&mut self, token_id: String, recipient: String) -> Promise {
         self.check_not_paused(PAUSE_WITHDRAW);
 
+        // Not returning as its going to cost too much GAS
         assert_one_yocto();
-        Promise::new(env::predecessor_account_id()).transfer(1);
 
         // check the token exists and that the caller is the owner
         let token = self.tokens_by_id.get(&token_id).expect("Token not found");
