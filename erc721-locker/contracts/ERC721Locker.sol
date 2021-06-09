@@ -14,6 +14,10 @@ import { INearProver, Locker } from "./Locker.sol";
 contract ERC721Locker is IERC721Locker, Locker, AdminControlled {
     using Strings for uint256;
 
+    // TODO create pause flags and use in modifiers
+    // uint constant PAUSE_FINALISE_FROM_NEAR = 1 << 0;
+    // uint constant PAUSE_TRANSFER_TO_NEAR = 1 << 1;
+
     event Locked (
         address indexed token,
         address indexed sender,
