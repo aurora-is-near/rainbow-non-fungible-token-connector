@@ -337,4 +337,110 @@ impl NFTFactory {
 
 admin_controlled::impl_admin_controlled!(NFTFactory, paused);
 
-// todo - add in tests
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use near_sdk::serde::export::TryFrom;
+    use near_sdk::MockedBlockchain;
+    use near_sdk::{testing_env, VMContext};
+
+    fn alice() -> AccountId {
+        String::from("alice.near")
+    }
+
+    fn bob() -> AccountId {
+        String::from("bob.near")
+    }
+
+    fn near() -> AccountId {
+        String::from("near.near")
+    }
+
+    fn mock_prover() -> AccountId {
+        String::from("mock-prover.near")
+    }
+
+    fn mock_eth_locker_address() -> String {
+        // no 0x needed
+        String::from("57f1887a8bf19b14fc0df6fd9b2acc9af147ea85")
+    }
+
+    fn mock_eth_nft_address_one() -> String {
+        // no 0x needed
+        String::from("629a673a8242c2ac4b7b8c5d8735fbeac21a6205")
+    }
+
+    fn get_context(predecessor_account_id: AccountId, attached_deposit: Balance) -> VMContext {
+        VMContext {
+            current_account_id: "near.near".to_string(),
+            signer_account_id: "near.near".to_string(),
+            signer_account_pk: vec![0, 1, 2],
+            predecessor_account_id,
+            input: vec![],
+            block_index: 0,
+            block_timestamp: 0,
+            account_balance: 1000 * 10u128.pow(24),
+            account_locked_balance: 0,
+            storage_usage: 10u64.pow(6),
+            attached_deposit,
+            prepaid_gas: 2 * 10u64.pow(14),
+            random_seed: vec![0, 1, 2],
+            is_view: false,
+            output_data_receivers: vec![],
+            epoch_height: 19,
+        }
+    }
+
+    fn deploy_contract(prover: AccountId, nft_eth_address: String) -> (NFTFactory, VMContext) {
+        let context = get_context(near(), 10u128.pow(24));
+        testing_env!(context.clone());
+
+        let mut contract = NFTFactory::new(
+            prover,
+            nft_eth_address
+        );
+
+        (contract, context)
+    }
+
+    #[test]
+    fn can_deploy_contract() {
+        let (mut contract, _) = deploy_contract(
+            mock_prover(),
+            mock_eth_locker_address()
+        );
+
+        assert_eq!(
+            contract.prover_account,
+            mock_prover(),
+            "Contract not set up with correct prover"
+        );
+    }
+
+    #[test]
+    fn can_deploy_bridge_nft() {
+        let (mut contract, _) = deploy_contract(
+            mock_prover(),
+            mock_eth_locker_address()
+        );
+
+        contract.deploy_bridge_token(mock_eth_nft_address_one());
+
+        assert_eq!(
+            contract.tokens.contains(&mock_eth_nft_address_one()),
+            true,
+            "Contract did not deploy nft"
+        );
+
+        assert_eq!(
+            contract.tokens.contains(&mock_eth_locker_address()),
+            false,
+            "Contract did not deploy nft"
+        );
+
+        assert_eq!(
+            contract.get_nft_token_account_id(mock_eth_nft_address_one()),
+            format!("{}.{}", mock_eth_nft_address_one(), near())
+        )
+    }
+}
