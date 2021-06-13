@@ -11,6 +11,7 @@ pub struct LockedEvent {
     pub sender: String,
     pub token_id: String,
     pub recipient: AccountId,
+    pub token_uri: String,
 }
 
 impl LockedEvent {
@@ -20,6 +21,7 @@ impl LockedEvent {
             ("sender".to_string(), ParamType::Address, true),
             ("token_id".to_string(), ParamType::String, false),
             ("account_id".to_string(), ParamType::String, false),
+            ("token_uri".to_string(), ParamType::String, false),
         ]
     }
 
@@ -38,6 +40,7 @@ impl LockedEvent {
 
         let token_id = event.log.params[2].value.clone().to_string().unwrap();
         let recipient = event.log.params[3].value.clone().to_string().unwrap();
+        let token_uri = event.log.params[4].value.clone().to_string().unwrap();
 
         Self {
             locker_address: event.locker_address,
@@ -45,6 +48,7 @@ impl LockedEvent {
             sender,
             token_id,
             recipient,
+            token_uri
         }
     }
 
@@ -60,35 +64,8 @@ impl LockedEvent {
             vec![
                 Token::String(self.token_id.to_string()),
                 Token::String(self.recipient.clone()),
+                Token::String(self.token_uri.clone()),
             ],
         )
     }
 }
-
-// impl std::fmt::Display for LockedEvent {
-//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-//         write!(
-//             f,
-//             "sender: {}; amount: {}; recipient: {}",
-//             self.sender, self.amount, self.recipient
-//         )
-//     }
-// }
-//
-// #[cfg(test)]
-// mod tests {
-//     use super::*;
-//
-//     #[test]
-//     fn test_event_data() {
-//         let event_data = LockedEvent {
-//             locker_address: [0u8; 20],
-//             sender: "00005474e89094c44da98b954eedeac495271d0f".to_string(),
-//             amount: 1000,
-//             recipient: "123".to_string(),
-//         };
-//         let data = event_data.to_log_entry_data();
-//         let result = LockedEvent::from_log_entry_data(&data);
-//         assert_eq!(result, event_data);
-//     }
-// }

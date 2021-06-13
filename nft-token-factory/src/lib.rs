@@ -237,7 +237,7 @@ impl NFTFactory {
             TokenMetadata {
                 title: None,
                 description: None,
-                media: None,
+                media: Some(LockedEvent::from_log_entry_data(&proof.log_entry_data).token_uri),
                 media_hash: None,
                 copies: None,
                 issued_at: None,
@@ -247,7 +247,7 @@ impl NFTFactory {
                 extra: None,
                 reference: None,
                 reference_hash: None,
-            }, // todo we could store token URI at a minimum from an ETH event or have an update method
+            },
             &self.get_nft_token_account_id(token),
             env::attached_deposit() - required_deposit,
             MINT_GAS,
@@ -341,8 +341,10 @@ admin_controlled::impl_admin_controlled!(NFTFactory, paused);
 mod tests {
     use super::*;
     use near_sdk::serde::export::TryFrom;
+    use std::convert::TryInto;
     use near_sdk::MockedBlockchain;
     use near_sdk::{testing_env, VMContext};
+    use uint::rustc_hex::{FromHex, ToHex};
 
     fn alice() -> AccountId {
         String::from("alice.near")
@@ -370,6 +372,10 @@ mod tests {
         String::from("629a673a8242c2ac4b7b8c5d8735fbeac21a6205")
     }
 
+    fn mock_eth_receiver() -> String {
+        String::from("47b78ACC6D29428F128Eb04B467D316e548e4B89")
+    }
+
     fn get_context(predecessor_account_id: AccountId, attached_deposit: Balance) -> VMContext {
         VMContext {
             current_account_id: "near.near".to_string(),
@@ -388,6 +394,43 @@ mod tests {
             is_view: false,
             output_data_receivers: vec![],
             epoch_height: 19,
+        }
+    }
+
+    fn sample_proof() -> Proof {
+        Proof {
+            log_index: 0,
+            log_entry_data: vec![],
+            receipt_index: 0,
+            receipt_data: vec![],
+            header_data: vec![],
+            proof: vec![],
+        }
+    }
+
+    fn create_proof(locker: String, token: String, token_id: String) -> Proof {
+        let event_data = LockedEvent {
+            locker_address: locker
+                .from_hex::<Vec<_>>()
+                .unwrap()
+                .as_slice()
+                .try_into()
+                .unwrap(),
+
+            token,
+            sender: "00005474e89094c44da98b954eedeac495271d0f".to_string(),
+            token_id,
+            recipient: "123".to_string(),
+            token_uri: "".to_string()
+        };
+
+        Proof {
+            log_index: 0,
+            log_entry_data: event_data.to_log_entry_data(),
+            receipt_index: 0,
+            receipt_data: vec![],
+            header_data: vec![],
+            proof: vec![],
         }
     }
 
@@ -442,5 +485,47 @@ mod tests {
             contract.get_nft_token_account_id(mock_eth_nft_address_one()),
             format!("{}.{}", mock_eth_nft_address_one(), near())
         )
+    }
+
+    #[test]
+    fn test_finish_withdraw() {
+        let (mut contract, mut context) = deploy_contract(
+            mock_prover(),
+            mock_eth_locker_address()
+        );
+
+        context.predecessor_account_id = alice();
+        context.attached_deposit = 10u128.pow(24);
+        testing_env!(context.clone());
+
+        contract.deploy_bridge_token(mock_eth_nft_address_one());
+
+        context.predecessor_account_id = format!("{}.{}", mock_eth_nft_address_one(), near());
+        context.attached_deposit = 1;
+        testing_env!(context.clone());
+
+        assert_eq!(
+            contract.finish_withdraw_to_eth("1".to_string(), mock_eth_receiver()),
+            ResultType::Withdraw {
+                token_id: "1".to_string(),
+                token: get_eth_address(mock_eth_nft_address_one()),
+                recipient: get_eth_address(mock_eth_receiver())
+            }
+        );
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_fail_deposit_no_token() {
+        let (mut contract, mut context) = deploy_contract(
+            mock_prover(),
+            mock_eth_locker_address()
+        );
+
+        context.predecessor_account_id = alice();
+        context.attached_deposit = 10u128.pow(24);
+        testing_env!(context.clone());
+
+        contract.finalise_eth_to_near_transfer(sample_proof());
     }
 }

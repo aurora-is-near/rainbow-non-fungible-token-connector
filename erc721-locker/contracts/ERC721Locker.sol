@@ -3,6 +3,8 @@
 pragma solidity 0.6.12;
 
 import { IERC721 } from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
+import { IERC721Metadata } from "@openzeppelin/contracts/token/ERC721/IERC721Metadata.sol";
+import { IERC165 } from "@openzeppelin/contracts/introspection/IERC165.sol";
 import { Strings } from "@openzeppelin/contracts/utils/Strings.sol";
 import { Borsh } from "rainbow-bridge/contracts/eth/nearbridge/contracts/Borsh.sol";
 import { AdminControlled } from "rainbow-bridge/contracts/eth/nearbridge/contracts/AdminControlled.sol";
@@ -14,15 +16,24 @@ import { INearProver, Locker } from "./Locker.sol";
 contract ERC721Locker is IERC721Locker, Locker, AdminControlled {
     using Strings for uint256;
 
-    // TODO create pause flags and use in modifiers
-    // uint constant PAUSE_FINALISE_FROM_NEAR = 1 << 0;
-    // uint constant PAUSE_TRANSFER_TO_NEAR = 1 << 1;
+    /*
+     *     bytes4(keccak256('name()')) == 0x06fdde03
+     *     bytes4(keccak256('symbol()')) == 0x95d89b41
+     *     bytes4(keccak256('tokenURI(uint256)')) == 0xc87b56dd
+     *
+     *     => 0x06fdde03 ^ 0x95d89b41 ^ 0xc87b56dd == 0x5b5e139f
+     */
+    bytes4 private constant _INTERFACE_ID_ERC721_METADATA = 0x5b5e139f;
+
+    uint constant PAUSE_FINALISE_FROM_NEAR = 1 << 0;
+    uint constant PAUSE_TRANSFER_TO_NEAR = 1 << 1;
 
     event Locked (
         address indexed token,
         address indexed sender,
         string tokenId,
-        string accountId
+        string accountId,
+        string tokenURI
     );
 
     event Unlocked (
@@ -57,16 +68,21 @@ contract ERC721Locker is IERC721Locker, Locker, AdminControlled {
         }
     }
 
-    function migrateTokenToNear(address _token, uint256 _tokenId, string memory _nearRecipientAccountId) public override {
+    function migrateTokenToNear(address _token, uint256 _tokenId, string memory _nearRecipientAccountId) public pausable(PAUSE_TRANSFER_TO_NEAR) override {
         string memory tokenIdAsString = _tokenId.toString();
 
         stringTokenIdToUnitForNft[_token][tokenIdAsString] = _tokenId;
         IERC721(_token).transferFrom(msg.sender, address(this), _tokenId);
 
-        emit Locked(_token, msg.sender, tokenIdAsString, _nearRecipientAccountId);
+        string memory tokenURI = "";
+        if (IERC165(_token).supportsInterface(_INTERFACE_ID_ERC721_METADATA)) {
+            tokenURI = IERC721Metadata(_token).tokenURI(_tokenId);
+        }
+
+        emit Locked(_token, msg.sender, tokenIdAsString, _nearRecipientAccountId, tokenURI);
     }
 
-    function finishNearToEthMigration(bytes calldata _proofData, uint64 _proofBlockHeader) external override {
+    function finishNearToEthMigration(bytes calldata _proofData, uint64 _proofBlockHeader) external pausable(PAUSE_FINALISE_FROM_NEAR) override {
         ProofDecoder.ExecutionStatus memory status = _parseAndConsumeProof(_proofData, _proofBlockHeader);
 
         Borsh.Data memory borshDataFromProof = Borsh.from(status.successValue);
