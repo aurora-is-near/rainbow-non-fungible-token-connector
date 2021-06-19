@@ -107,6 +107,11 @@ impl Contract {
         )
     }
 
+    pub fn set_owner_account_id(&mut self, new_owner: ValidAccountId) {
+        self.assert_owner();
+        self.owner_id = new_owner.into();
+    }
+
     fn measure_min_token_storage_cost(&mut self) {
         let initial_storage_usage = env::storage_usage();
         let tmp_account_id = "a".repeat(64);

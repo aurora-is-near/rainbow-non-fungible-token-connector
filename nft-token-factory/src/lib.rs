@@ -67,6 +67,9 @@ pub struct NFTFactory {
     /// Public key of the account deploying the factory.
     pub owner_pk: PublicKey,
 
+    /// Account ID of the account deploying the factory.
+    pub owner_id: AccountId,
+
     /// Balance required to register a new account in the BridgeNFT
     pub bridge_token_storage_deposit_required: Balance,
 
@@ -89,7 +92,20 @@ pub trait ExtNFTFactory {
     ) -> Promise;
 }
 
+#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone)]
+#[serde(crate = "near_sdk::serde")]
+pub struct NFTMetadata {
+    pub spec: String,              // required, essentially a version like "nft-1.0.0"
+    pub name: String,              // required, ex. "Mosaics"
+    pub symbol: String,            // required, ex. "MOSIAC"
+    pub icon: Option<String>,      // Data URL
+    pub base_uri: Option<String>, // Centralized gateway known to have reliable access to decentralized storage assets referenced by `reference` or `media` URLs
+    pub reference: Option<String>, // URL to a JSON file with more info
+    pub reference_hash: Option<Base64VecU8>, // Base64-encoded sha256 hash of JSON from reference field. Required if `reference` is included.
+}
+
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
+#[serde(crate = "near_sdk::serde")]
 pub struct TokenMetadata {
     pub title: Option<String>, // ex. "Arch Nemesis: Mail Carrier" or "Parcel #5055"
     pub description: Option<String>, // free-form description
@@ -108,6 +124,7 @@ pub struct TokenMetadata {
 #[ext_contract(ext_bridge_nft)]
 pub trait ExtBridgedNFT {
     fn nft_mint(&self, token_id: String, recipient: AccountId, metadata: TokenMetadata);
+    fn set_metadata(&mut self, metadata: NFTMetadata);
 }
 
 #[near_bindgen]
@@ -121,6 +138,7 @@ impl NFTFactory {
             tokens: UnorderedSet::new(b"t".to_vec()),
             used_events: UnorderedSet::new(b"u".to_vec()),
             owner_pk: env::signer_account_pk(),
+            owner_id: env::signer_account_id(),
             bridge_token_storage_deposit_required: env::storage_byte_cost() * 237, // this can be verified by calling storage_cost_per_nft() in bridge_nft.wasm when deployed
             paused: Mask::default(),
         }
@@ -294,6 +312,27 @@ impl NFTFactory {
                 BRIDGE_TOKEN_NEW,
             )
     }
+
+    // todo set metadata
+    pub fn set_nft_contract_metadata(&mut self, address: String, metadata: NFTMetadata) {
+        assert_eq!(
+            &env::predecessor_account_id(),
+            &self.owner_id,
+            "Owner's method"
+        );
+
+        ext_bridge_nft::set_metadata(
+            metadata,
+            &self.get_nft_token_account_id(address),
+            NO_DEPOSIT, // todo - must attach deposit for storage
+            MINT_GAS, // todo - have separate GAS value in own variable
+        );
+    }
+
+    // todo update token owner
+
+    // todo delete key
+    // todo add full key
 
     pub fn get_nft_token_account_id(&self, address: String) -> AccountId {
         let address = address.to_lowercase();
