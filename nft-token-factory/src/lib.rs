@@ -5,7 +5,7 @@ use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::serde::{Deserialize, Serialize};
 use near_sdk::collections::UnorderedSet;
 use near_sdk::{env, ext_contract, near_bindgen, AccountId, Balance, Gas, PanicOnDefault, Promise, PublicKey};
-use near_sdk::json_types::{Base64VecU8, U64};
+use near_sdk::json_types::{Base64VecU8, U64, ValidAccountId};
 
 use admin_controlled::{AdminControlled, Mask};
 
@@ -125,6 +125,7 @@ pub struct TokenMetadata {
 pub trait ExtBridgedNFT {
     fn nft_mint(&self, token_id: String, recipient: AccountId, metadata: TokenMetadata);
     fn set_metadata(&mut self, metadata: NFTMetadata);
+    fn set_owner_account_id(&mut self, new_owner: ValidAccountId);
 }
 
 #[near_bindgen]
@@ -330,9 +331,66 @@ impl NFTFactory {
     }
 
     // todo update token owner
+    pub fn update_token_owner_account_id(&mut self, address: String, new_owner: ValidAccountId) {
+        assert_eq!(
+            &env::predecessor_account_id(),
+            &self.owner_id,
+            "Owner's method"
+        );
+
+        ext_bridge_nft::set_owner_account_id(
+            new_owner,
+            &self.get_nft_token_account_id(address),
+            NO_DEPOSIT, // todo - must attach deposit for storage
+            MINT_GAS, // todo - have separate GAS value in own variable
+        );
+    }
+
+    // todo add full key
+    pub fn add_full_key_to_bridge_nft_account(&mut self, address: String, key: PublicKey) {
+        assert_eq!(
+            &env::predecessor_account_id(),
+            &self.owner_id,
+            "Owner's method"
+        );
+
+        assert!(
+            is_valid_eth_address(address.clone()),
+            "Invalid ETH address"
+        );
+
+        assert!(
+            self.tokens.contains(&address),
+            "Bridge NFT contract does not exist."
+        );
+
+        let bridge_token_account_id = format!("{}.{}", address, env::current_account_id());
+        Promise::new(bridge_token_account_id)
+            .add_full_access_key(key);
+    }
 
     // todo delete key
-    // todo add full key
+    pub fn delete_full_key_from_bridge_nft_account(&mut self, address: String, key: PublicKey) {
+        assert_eq!(
+            &env::predecessor_account_id(),
+            &self.owner_id,
+            "Owner's method"
+        );
+
+        assert!(
+            is_valid_eth_address(address.clone()),
+            "Invalid ETH address"
+        );
+
+        assert!(
+            self.tokens.contains(&address),
+            "Bridge NFT contract does not exist."
+        );
+
+        let bridge_token_account_id = format!("{}.{}", address, env::current_account_id());
+        Promise::new(bridge_token_account_id)
+            .delete_key(key);
+    }
 
     pub fn get_nft_token_account_id(&self, address: String) -> AccountId {
         let address = address.to_lowercase();
