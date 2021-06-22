@@ -26,6 +26,9 @@ const BRIDGE_TOKEN_INIT_BALANCE: Balance = 50_000_000_000_000; // todo correct t
 /// Gas to call mint method on bridge nft.
 const MINT_GAS: Gas = 50_000_000_000_000; // todo correct this value to mainnet value
 
+const SET_METADATA_GAS: Gas = 10_000_000_000_000; // todo correct this value to mainnet value
+const UPDATE_TOKEN_OWNER_GAS: Gas = 10_000_000_000_000; // todo correct this value to mainnet value
+
 const NO_DEPOSIT: Balance = 0;
 
 /// Gas to call verify_log_entry on prover.
@@ -314,7 +317,6 @@ impl NFTFactory {
             )
     }
 
-    // todo set metadata
     pub fn set_nft_contract_metadata(&mut self, address: String, metadata: NFTMetadata) {
         assert_eq!(
             &env::predecessor_account_id(),
@@ -325,12 +327,11 @@ impl NFTFactory {
         ext_bridge_nft::set_metadata(
             metadata,
             &self.get_nft_token_account_id(address),
-            NO_DEPOSIT, // todo - must attach deposit for storage
-            MINT_GAS, // todo - have separate GAS value in own variable
+            env::attached_deposit(),
+            SET_METADATA_GAS,
         );
     }
 
-    // todo update token owner
     pub fn update_token_owner_account_id(&mut self, address: String, new_owner: ValidAccountId) {
         assert_eq!(
             &env::predecessor_account_id(),
@@ -341,12 +342,11 @@ impl NFTFactory {
         ext_bridge_nft::set_owner_account_id(
             new_owner,
             &self.get_nft_token_account_id(address),
-            NO_DEPOSIT, // todo - must attach deposit for storage
-            MINT_GAS, // todo - have separate GAS value in own variable
+            env::attached_deposit(),
+            UPDATE_TOKEN_OWNER_GAS,
         );
     }
 
-    // todo add full key
     pub fn add_full_key_to_bridge_nft_account(&mut self, address: String, key: PublicKey) {
         assert_eq!(
             &env::predecessor_account_id(),
@@ -369,7 +369,6 @@ impl NFTFactory {
             .add_full_access_key(key);
     }
 
-    // todo delete key
     pub fn delete_full_key_from_bridge_nft_account(&mut self, address: String, key: PublicKey) {
         assert_eq!(
             &env::predecessor_account_id(),
