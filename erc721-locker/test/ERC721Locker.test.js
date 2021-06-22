@@ -44,7 +44,7 @@ contract('ERC721Locker', function ([deployer, nearProver, nearEvmBeneficiary, un
       this.prover.address,
       0,
       lockerAdmin,
-      1
+      0
     )
 
     // deploy a mock token and mint the first NFT
