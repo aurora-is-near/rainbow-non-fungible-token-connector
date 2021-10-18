@@ -1,4 +1,4 @@
-use admin_controlled::{AdminControlled, Mask};
+use admin_controlled::Mask;
 use near_contract_standards::non_fungible_token::core::NonFungibleToken;
 use near_contract_standards::non_fungible_token::metadata::{
     NFTContractMetadata, NonFungibleTokenMetadataProvider, TokenMetadata,
@@ -6,7 +6,7 @@ use near_contract_standards::non_fungible_token::metadata::{
 use near_contract_standards::non_fungible_token::{Token, TokenId};
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::LazyOption;
-use near_sdk::json_types::ValidAccountId;
+use near_sdk::json_types::{ValidAccountId, U64};
 use near_sdk::{
     assert_one_yocto, env, ext_contract, near_bindgen, AccountId, Balance, BorshStorageKey, Gas,
     PanicOnDefault, Promise, PromiseOrValue, StorageUsage,
@@ -24,10 +24,11 @@ const PAUSE_WITHDRAW: Mask = 1 << 0;
 
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
-pub struct Contract {
+pub struct BridgeNFT {
     controller: AccountId,
     tokens: NonFungibleToken,
     metadata: LazyOption<NFTContractMetadata>,
+    paused: Mask,
 }
 
 #[derive(BorshSerialize, BorshStorageKey)]
@@ -50,31 +51,34 @@ pub trait ExtBridgeNFTFactory {
 }
 
 #[near_bindgen]
-impl Contract {
+impl BridgeNFT {
     #[init]
-    // , metadata: NFTContractMetadata
     pub fn new() -> Self {
         assert!(!env::state_exists(), "Already initialized");
-        let account_id: ValidAccountId = env::predecessor_account_id().try_into().unwrap();
-
         Self {
             controller: env::predecessor_account_id(),
             tokens: NonFungibleToken::new(
                 StorageKey::NonFungibleToken,
-                account_id,
+                env::predecessor_account_id().try_into().unwrap(),
                 Some(StorageKey::TokenMetadata),
                 Some(StorageKey::Enumeration),
                 Some(StorageKey::Approval),
             ),
             metadata: LazyOption::new(StorageKey::Metadata, None),
+            paused: Mask::default(),
         }
     }
 
     pub fn set_metadata(&mut self, metadata: NFTContractMetadata) {
+        // Only owner can change the metadata
+        assert!(self.controller_or_self());
         self.metadata = LazyOption::new(StorageKey::Metadata.try_to_vec().unwrap(), Some(&metadata))
     }
 
     pub fn set_owner_account_id(&mut self, new_owner: ValidAccountId) {
+        // Only owner can change the owner account_id
+        assert!(self.controller_or_self());
+
         self.tokens.owner_id = new_owner.into();
     }
 
@@ -85,6 +89,11 @@ impl Contract {
         receiver_id: ValidAccountId,
         token_metadata: TokenMetadata,
     ) -> Token {
+        assert_eq!(
+            env::predecessor_account_id(),
+            self.controller,
+            "Only controller can call mint"
+        );
         self.tokens
             .mint(token_id, receiver_id, Some(token_metadata))
     }
@@ -99,9 +108,9 @@ impl Contract {
         caller == self.controller || caller == env::current_account_id()
     }
 
-    pub fn withdraw(&mut self, token_id: String, recipient: AccountId) -> Promise {
-        // Todo
-        // self.ch.check_not_paused(PAUSE_WITHDRAW);
+    #[payable]
+    pub fn withdraw(&mut self, token_id: String, recipient: String) -> Promise {
+        self.check_not_paused(PAUSE_WITHDRAW);
 
         // Not returning as its going to cost too much GAS
         assert_one_yocto();
@@ -113,7 +122,6 @@ impl Contract {
             .expect("Token not found");
 
         let predecessor_account_id = env::predecessor_account_id();
-        
         if let Some(approvals_by_id) = &mut self.tokens.approvals_by_id {
             let is_authorized: bool = approvals_by_id.contains_key(&predecessor_account_id)
                 || &predecessor_account_id == &self.tokens.owner_by_id.get(&token_id).unwrap();
@@ -123,7 +131,7 @@ impl Contract {
             }
         }
         // burn the token
-        &self.tokens.owner_by_id.remove(&token_id);
+        self.tokens.owner_by_id.remove(&token_id);
         if let Some(token_metadata_by_id) = &mut self.tokens.token_metadata_by_id {
             token_metadata_by_id.remove(&token_id);
         }
@@ -145,12 +153,13 @@ impl Contract {
     }
 }
 
-near_contract_standards::impl_non_fungible_token_core!(Contract, tokens);
-near_contract_standards::impl_non_fungible_token_approval!(Contract, tokens);
-near_contract_standards::impl_non_fungible_token_enumeration!(Contract, tokens);
+near_contract_standards::impl_non_fungible_token_core!(BridgeNFT, tokens);
+near_contract_standards::impl_non_fungible_token_approval!(BridgeNFT, tokens);
+near_contract_standards::impl_non_fungible_token_enumeration!(BridgeNFT, tokens);
+admin_controlled::impl_admin_controlled!(BridgeNFT, paused);
 
 #[near_bindgen]
-impl NonFungibleTokenMetadataProvider for Contract {
+impl NonFungibleTokenMetadataProvider for BridgeNFT {
     fn nft_metadata(&self) -> NFTContractMetadata {
         self.metadata.get().unwrap()
     }
@@ -223,17 +232,17 @@ mod tests {
         }
     }
 
-    fn helper_mint(recipient: ValidAccountId) -> (Contract, VMContext) {
+    fn helper_mint(recipient: ValidAccountId) -> (BridgeNFT, VMContext) {
         let context = get_context(nft(), 11u128.pow(24));
         testing_env!(context.clone());
-        let mut contract = Contract::new();
+        let mut contract = BridgeNFT::new();
         contract.nft_mint("0".to_string(), recipient, helper_token_metadata());
         (contract, context)
     }
 
     #[test]
     fn basic_mint_from_owner() {
-        let (mut contract, mut context) = helper_mint(nft());
+        let (contract, context) = helper_mint(nft());
         let token_info = &contract.nft_token("0".to_string());
         assert!(
             token_info.is_some(),
@@ -242,11 +251,11 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Unauthorized")]
+    #[should_panic(expected = "Only controller can call mint")]
     fn failed_mint_from_non_contract_owner() {
         let context = get_context(alice(), 8460000000000000000000);
         testing_env!(context);
-        let mut contract = Contract::new();
+        let mut contract = BridgeNFT::new();
 
         let context = get_context(bob(), 8460000000000000000000);
         testing_env!(context);
