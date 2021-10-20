@@ -6,7 +6,7 @@ use near_contract_standards::non_fungible_token::metadata::{
 use near_contract_standards::non_fungible_token::{Token, TokenId};
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::LazyOption;
-use near_sdk::json_types::{ValidAccountId, U64};
+use near_sdk::json_types::ValidAccountId;
 use near_sdk::{
     assert_one_yocto, env, ext_contract, near_bindgen, AccountId, Balance, BorshStorageKey, Gas,
     PanicOnDefault, Promise, PromiseOrValue, StorageUsage,
@@ -86,7 +86,7 @@ impl BridgeNFT {
     pub fn nft_mint(
         &mut self,
         token_id: TokenId,
-        receiver_id: ValidAccountId,
+        receiver_id: AccountId,
         token_metadata: TokenMetadata,
     ) -> Token {
         assert_eq!(
@@ -94,8 +94,11 @@ impl BridgeNFT {
             self.controller,
             "Only controller can call mint"
         );
-        self.tokens
-            .mint(token_id, receiver_id, Some(token_metadata))
+        self.tokens.mint(
+            token_id,
+            receiver_id.try_into().unwrap(),
+            Some(token_metadata),
+        )
     }
 
     pub fn account_storage_usage(&self) -> StorageUsage {
@@ -236,13 +239,17 @@ mod tests {
         let context = get_context(nft(), 11u128.pow(24));
         testing_env!(context.clone());
         let mut contract = BridgeNFT::new();
-        contract.nft_mint("0".to_string(), recipient, helper_token_metadata());
+        contract.nft_mint(
+            "0".to_string(),
+            recipient.to_string(),
+            helper_token_metadata(),
+        );
         (contract, context)
     }
 
     #[test]
     fn basic_mint_from_owner() {
-        let (contract, context) = helper_mint(nft());
+        let (contract, _) = helper_mint(nft());
         let token_info = &contract.nft_token("0".to_string());
         assert!(
             token_info.is_some(),
@@ -259,7 +266,7 @@ mod tests {
 
         let context = get_context(bob(), 8460000000000000000000);
         testing_env!(context);
-        contract.nft_mint("0".to_string(), nft(), helper_token_metadata());
+        contract.nft_mint("0".to_string(), nft().to_string(), helper_token_metadata());
     }
 
     #[test]
@@ -313,75 +320,6 @@ mod tests {
         testing_env!(context.clone());
 
         contract.withdraw("0".to_string(), "0xfaaf".to_string());
-    }
-
-    #[test]
-    fn transfer_using_approver() {
-        let (mut contract, mut context) = helper_mint(nft());
-        let mut token_info = &contract.tokens.nft_token("0".to_string());
-        assert!(
-            token_info.is_some(),
-            "Expected to find newly minted token, got None."
-        );
-
-        if let Some(token_info_obj) = token_info {
-            if let Some(approved_account_ids_obj) = &token_info_obj.approved_account_ids {
-                assert_eq!(
-                    approved_account_ids_obj.len(),
-                    0,
-                    "Expected no initial approvers."
-                );
-            }
-
-            // contract.nft_approve(
-            //     token_info_obj.token_id,
-            //     ValidAccountId::try_from(alice()).unwrap(),
-            //     None,
-            // );
-        }
-
-        // token_info = contract.nft_token("0".to_string());
-        // assert!(
-        //     token_info.is_some(),
-        //     "Expected to find token after approval, got None."
-        // );
-        // token_info_obj = token_info.unwrap();
-        // assert_eq!(
-        //     token_info_obj.approved_account_ids.unwrap().len(),
-        //     1,
-        //     "Expected one approver."
-        // );
-        // assert_eq!(
-        //     token_info_obj.owner_id,
-        //     nft(),
-        //     "Expected nft.near to own token."
-        // );
-        // // Call from alice
-        // context.predecessor_account_id = alice().to_string();
-        // context.attached_deposit = 1;
-        // testing_env!(context.clone());
-        // contract.nft_transfer(
-        //     ValidAccountId::try_from(alice()).unwrap(),
-        //     "0".to_string(),
-        //     Some(U64::from(0u64)),
-        //     Some("thanks for allowing me to take it".to_string()),
-        // );
-        // token_info = contract.nft_token("0".to_string());
-        // assert!(
-        //     token_info.is_some(),
-        //     "Expected to find token after transfer, got None."
-        // );
-        // token_info_obj = token_info.unwrap();
-        // assert_eq!(
-        //     token_info_obj.approved_account_ids.unwrap().len(),
-        //     0,
-        //     "Expected approvers to reset to zero after transfer."
-        // );
-        // assert_eq!(
-        //     token_info_obj.owner_id,
-        //     alice(),
-        //     "Expected alice.near to own token after transferring using approvals."
-        // );
     }
 
     #[test]
