@@ -29,6 +29,10 @@ if (PRIVATE_KEY) {
       url: `https://kovan.infura.io/v3/${INFURA_PROJECT_ID}`,
         accounts: [`0x${PRIVATE_KEY}`]
     },
+    goerli: {
+      url: `https://goerli.infura.io/v3/${INFURA_PROJECT_ID}`,
+      accounts: [`0x${PRIVATE_KEY}`]
+    },
   }
 }
 
