@@ -19,9 +19,9 @@ pub mod prover;
 mod locked_event;
 
 /// Gas to call finalise method.
-const FINISH_FINALISE_GAS: Gas = 50_000_000_000_000; // todo correct this value to mainnet value
-const BRIDGE_TOKEN_NEW: Gas = 50_000_000_000_000; // todo correct this value to mainnet value
-const BRIDGE_TOKEN_INIT_BALANCE: Balance = 50_000_000_000_000; // todo correct this value to mainnet value
+const FINISH_FINALISE_GAS: Gas = 10_000_000_000_000;
+const BRIDGE_TOKEN_NEW: Gas = 10_000_000_000_000;
+const BRIDGE_TOKEN_INIT_BALANCE: Balance = 3_000_000_000_000_000_000_000_000; // 3e24yN, 3N
 
 /// Gas to call mint method on bridge nft.
 const MINT_GAS: Gas = 50_000_000_000_000; // todo correct this value to mainnet value
