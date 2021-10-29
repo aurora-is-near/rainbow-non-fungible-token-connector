@@ -142,8 +142,7 @@ impl BridgeNFTFactory {
             self.tokens.contains(&parts[0].to_string()),
             "Such Bridge NFT token does not exist."
         );
-        env::log(token.as_bytes());
-        env::log(token.as_bytes());
+
         let token_address = validate_eth_address(parts[0].to_string());
         let recipient_address = validate_eth_address(recipient);
 
@@ -219,10 +218,6 @@ impl BridgeNFTFactory {
         }
         // let owner_pk: ValidAccountId = new_owner_pk.try_into().unwrap();
         let log = EthLockedEvent::from_log_entry_data(&proof.log_entry_data);
-        env::log(format!("{}", verification_success).as_bytes());
-        env::log(token.as_bytes());
-        env::log(new_owner_pk.as_bytes());
-        env::log(token_id.as_bytes());
 
         ext_bridge_nft::nft_mint(
             token_id,

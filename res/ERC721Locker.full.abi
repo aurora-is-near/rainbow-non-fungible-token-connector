@@ -73,7 +73,7 @@
         {
           "indexed": false,
           "internalType": "string",
-          "name": "tokenURI",
+          "name": "tokenUri",
           "type": "string"
         }
       ],

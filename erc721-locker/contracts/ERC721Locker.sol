@@ -33,7 +33,7 @@ contract ERC721Locker is IERC721Locker, Locker, AdminControlled {
         address indexed sender,
         string tokenId,
         string accountId,
-        string tokenURI
+        string tokenUri
     );
 
     event Unlocked (
