@@ -206,18 +206,6 @@ mod tests {
         }
     }
 
-    fn helper_contract_metadata() -> NFTContractMetadata {
-        NFTContractMetadata {
-            spec: "".to_string(),
-            name: "".to_string(),
-            symbol: "".to_string(),
-            icon: None,
-            base_uri: None,
-            reference: None,
-            reference_hash: None,
-        }
-    }
-
     fn helper_token_metadata() -> TokenMetadata {
         TokenMetadata {
             title: Some("Mochi Rising".to_string()),
