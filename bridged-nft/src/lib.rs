@@ -74,7 +74,7 @@ impl BridgedNFT {
         self.metadata = LazyOption::new(StorageKey::Metadata.try_to_vec().unwrap(), Some(&metadata))
     }
 
-    pub fn set_token_owner_id(&mut self, new_owner: ValidAccountId) {
+    pub fn set_token_owner_account_id(&mut self, new_owner: ValidAccountId) {
         self.is_token_owner();
         self.tokens.owner_id = new_owner.into();
     }
@@ -283,7 +283,7 @@ mod tests {
     fn success_set_token_owner_id() {
         testing_env!(get_context(nft(), 11u128.pow(24)).clone());
         let mut contract = BridgedNFT::new();
-        contract.set_token_owner_id(bob());
+        contract.set_token_owner_account_id(bob());
         assert_eq!(
             contract.tokens.owner_id,
             bob().to_string(),
@@ -293,11 +293,11 @@ mod tests {
 
     #[test]
     #[should_panic(expected = "Caller isn't the token owner")]
-    fn fail_set_token_owner_id() {
+    fn fail_set_token_owner_account_id() {
         testing_env!(get_context(nft(), 11u128.pow(24)).clone());
         let mut contract = BridgedNFT::new();
         testing_env!(get_context(bob(), 11u128.pow(24)).clone());
-        contract.set_token_owner_id(bob());
+        contract.set_token_owner_account_id(bob());
     }
 
     #[test]
