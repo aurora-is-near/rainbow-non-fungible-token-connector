@@ -56,6 +56,12 @@ contract Locker is Initializable {
         ProofDecoder.FullOutcomeProof memory fullOutcomeProof = borshData
             .decodeFullOutcomeProof();
 
+        condition(
+            fullOutcomeProof.block_header_lite.inner_lite.height >=
+                minBlockAcceptanceHeight,
+            "Proof is from the ancient block"
+        );
+
         bytes32 receiptId = fullOutcomeProof
             .outcome_proof
             .outcome_with_id
