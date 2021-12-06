@@ -58,7 +58,7 @@ pub enum ResultType {
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
 pub struct BridgeNFTFactory {
     /// The account of the prover that we can use to prove
-    pub prover_account: AccountId,
+    pub prover_account: ValidAccountId,
     /// Address of the Ethereum locker contract.
     pub locker_address: EthAddress,
     /// Set of created BridgeNFT contracts.
@@ -94,14 +94,15 @@ pub trait ExtBridgeNFTFactory {
 pub trait ExtBridgedNFT {
     fn nft_mint(&self, token_id: String, receiver_id: AccountId, token_metadata: TokenMetadata);
     fn set_metadata(&mut self, metadata: NFTContractMetadata);
-    fn set_owner_account_id(&mut self, new_owner: ValidAccountId);
-    fn controller_or_self(&mut self) -> bool;
+    fn set_token_owner_account_id(&mut self, new_owner: ValidAccountId);
+    fn is_controller(&mut self) -> bool;
+    fn is_owner(&mut self) -> bool;
 }
 
 #[near_bindgen]
 impl BridgeNFTFactory {
     #[init]
-    pub fn new(prover_account: AccountId, locker_address: String) -> Self {
+    pub fn new(prover_account: ValidAccountId, locker_address: String) -> Self {
         assert!(!env::state_exists(), "Already initialized");
         Self {
             prover_account,
@@ -120,8 +121,23 @@ impl BridgeNFTFactory {
         self.tokens.iter().collect::<Vec<_>>()
     }
 
-    /// Finalise the withdraw to eth from a sub NFT contract. Only this bridge can emit the execution outcome to be processed on the Eth side
-    /// Caller must be <token_address>.<current_account_id>, where <token_address> exists in the `tokens`.
+    fn is_owner(&self) {
+        assert_eq!(
+            &env::predecessor_account_id(),
+            &self.owner_id,
+            "Owner's method"
+        );
+    }
+
+    fn token_exists(&self, address: String) {
+        assert!(
+            self.tokens.contains(&address),
+            "Bridged NFT contract doen't exist."
+        );
+    }
+    /// Finalise the withdraw to eth from a sub NFT contract. Only this bridge can emit
+    /// the execution outcome to be processed on the Eth side Caller must be <token_address>.
+    /// <current_account_id>, where <token_address> exists in the `tokens`.
     // todo: how much GAS is required to execute this method
     #[result_serializer(borsh)]
     pub fn finish_withdraw_to_eth(
@@ -168,7 +184,7 @@ impl BridgeNFTFactory {
 
         assert!(
             self.tokens.contains(&event.token),
-            "Bridge NFT for {} is not deployed yet",
+            "Bridged NFT for {} is not deployed yet",
             event.token
         );
 
@@ -243,25 +259,31 @@ impl BridgeNFTFactory {
     }
 
     #[payable]
-    pub fn deploy_bridge_token(&mut self, address: String) -> Promise {
+    pub fn deploy_bridged_token(&mut self, address: String) -> Promise {
         self.check_not_paused(PAUSE_DEPLOY_TOKEN);
 
         let address = address.to_lowercase();
+        // check if the eth address is valid.
         is_valid_eth_address(address.clone());
 
-        // self.token_exists(address.clone());
+        // check if the token was already deployed.
+        assert!(
+            !self.tokens.contains(&address),
+            "Bridged NFT contract was already deployed."
+        );
+
         let initial_storage = env::storage_usage() as u128;
         self.tokens.insert(&address);
         let current_storage = env::storage_usage() as u128;
 
+        // check if the total deposit can cover the contract deployment.
+        let min_required_deposit = BRIDGE_TOKEN_INIT_BALANCE
+            + env::storage_byte_cost() * (current_storage - initial_storage);
         assert!(
-            env::attached_deposit()
-                >= BRIDGE_TOKEN_INIT_BALANCE
-                    + env::storage_byte_cost() * (current_storage - initial_storage),
+            env::attached_deposit() >= min_required_deposit,
             "Not enough attached deposit to complete bridge nft token creation {}-{}",
             env::attached_deposit(),
-            BRIDGE_TOKEN_INIT_BALANCE
-                + env::storage_byte_cost() * (current_storage - initial_storage)
+            min_required_deposit
         );
 
         let bridge_token_account_id = format!("{}.{}", address, env::current_account_id());
@@ -269,7 +291,7 @@ impl BridgeNFTFactory {
             .create_account()
             .transfer(BRIDGE_TOKEN_INIT_BALANCE)
             .add_full_access_key(self.owner_pk.clone())
-            .deploy_contract(include_bytes!("../../res/bridge_nft.wasm").to_vec())
+            .deploy_contract(include_bytes!("../../res/bridged_nft.wasm").to_vec())
             .function_call(
                 b"new".to_vec(),
                 b"{}".to_vec(),
@@ -278,7 +300,11 @@ impl BridgeNFTFactory {
             )
     }
 
-    pub fn set_nft_contract_metadata(&mut self, address: String, metadata: NFTContractMetadata) {
+    pub fn set_nft_contract_metadata(
+        &mut self,
+        address: String,
+        metadata: NFTContractMetadata,
+    ) -> Promise {
         self.is_owner();
 
         ext_bridge_nft::set_metadata(
@@ -286,13 +312,13 @@ impl BridgeNFTFactory {
             &self.get_nft_token_account_id(address),
             env::attached_deposit(),
             SET_METADATA_GAS,
-        );
+        )
     }
 
     pub fn update_token_owner_account_id(&mut self, address: String, new_owner: ValidAccountId) {
         self.is_owner();
 
-        ext_bridge_nft::set_owner_account_id(
+        ext_bridge_nft::set_token_owner_account_id(
             new_owner,
             &self.get_nft_token_account_id(address),
             env::attached_deposit(),
@@ -300,9 +326,9 @@ impl BridgeNFTFactory {
         );
     }
 
-    pub fn add_full_key_to_bridge_nft_account(&mut self, address: String, key: PublicKey) {
-        let address = address.to_lowercase();
+    pub fn add_full_key_to_bridge_nft_account(&mut self, eth_address: String, key: PublicKey) {
         self.is_owner();
+        let address = eth_address.to_lowercase();
         is_valid_eth_address(address.clone());
         self.token_exists(address.clone());
 
@@ -310,9 +336,9 @@ impl BridgeNFTFactory {
         Promise::new(bridge_token_account_id).add_full_access_key(key);
     }
 
-    pub fn delete_full_key_from_bridge_nft_account(&mut self, address: String, key: PublicKey) {
-        let address = address.to_lowercase();
+    pub fn delete_full_key_from_bridge_nft_account(&mut self, eth_address: String, key: PublicKey) {
         self.is_owner();
+        let address = eth_address.to_lowercase();
         is_valid_eth_address(address.clone());
         self.token_exists(address.clone());
 
@@ -320,11 +346,10 @@ impl BridgeNFTFactory {
         Promise::new(bridge_token_account_id).delete_key(key);
     }
 
-    pub fn get_nft_token_account_id(&self, address: String) -> AccountId {
-        let address = address.to_lowercase();
+    pub fn get_nft_token_account_id(&self, eth_address: String) -> AccountId {
+        let address = eth_address.to_lowercase();
         is_valid_eth_address(address.clone());
         self.token_exists(address.clone());
-
         format!("{}.{}", address, env::current_account_id())
     }
 
@@ -350,21 +375,6 @@ impl BridgeNFTFactory {
 
         required_deposit
     }
-
-    fn is_owner(&self) {
-        assert_eq!(
-            &env::predecessor_account_id(),
-            &self.owner_id,
-            "Owner's method"
-        );
-    }
-
-    fn token_exists(&self, address: String) {
-        assert!(
-            self.tokens.contains(&address),
-            "Bridge NFT contract does not exist."
-        );
-    }
 }
 
 admin_controlled::impl_admin_controlled!(BridgeNFTFactory, paused);
@@ -373,21 +383,18 @@ admin_controlled::impl_admin_controlled!(BridgeNFTFactory, paused);
 mod tests {
     use super::*;
     use near_sdk::env::sha256;
+    use near_sdk::test_utils::{accounts, VMContextBuilder};
     use near_sdk::MockedBlockchain;
     use near_sdk::{testing_env, VMContext};
     use std::convert::TryInto;
     use uint::rustc_hex::{FromHex, ToHex};
 
-    fn alice() -> AccountId {
-        String::from("alice.near")
+    fn mock_prover() -> ValidAccountId {
+        accounts(3)
     }
 
-    fn near() -> AccountId {
-        String::from("near.near")
-    }
-
-    fn mock_prover() -> AccountId {
-        String::from("mock-prover.near")
+    fn bridge_token_factory() -> ValidAccountId {
+        accounts(4)
     }
 
     fn mock_eth_locker_address() -> String {
@@ -398,10 +405,6 @@ mod tests {
     fn mock_eth_nft_address_one() -> String {
         // no 0x needed
         String::from("629a673a8242c2ac4b7b8c5d8735fbeac21a6205")
-    }
-
-    fn bridge_token_factory() -> AccountId {
-        "bridge".to_string()
     }
 
     fn token_locker() -> String {
@@ -417,28 +420,14 @@ mod tests {
             .to_hex()
     }
 
-    fn get_context(predecessor_account_id: AccountId, attached_deposit: Balance) -> VMContext {
-        VMContext {
-            current_account_id: "near.near".to_string(),
-            signer_account_id: "near.near".to_string(),
-            signer_account_pk: vec![0, 1, 2],
-            predecessor_account_id,
-            input: vec![],
-            block_index: 0,
-            block_timestamp: 0,
-            account_balance: 10000 * 10u128.pow(24),
-            account_locked_balance: 0,
-            storage_usage: 10u64.pow(6),
-            attached_deposit,
-            prepaid_gas: 200 * 10u64.pow(14),
-            random_seed: vec![0, 1, 2],
-            is_view: false,
-            output_data_receivers: vec![],
-            epoch_height: 19,
-        }
+    fn get_context(current_account_id: ValidAccountId, attached_deposit: Balance) -> VMContext {
+        VMContextBuilder::new()
+            .current_account_id(current_account_id)
+            .attached_deposit(attached_deposit)
+            .build()
     }
 
-    fn create_proof(locker: String, token: String, token_id: String) -> Proof {
+    fn mock_proof(locker: String, token: String, token_id: String) -> Proof {
         let event_data = EthLockedEvent {
             locker_address: locker
                 .from_hex::<Vec<_>>()
@@ -464,35 +453,28 @@ mod tests {
         }
     }
 
-    fn deploy_contract(
-        prover: AccountId,
-        nft_eth_address: String,
-    ) -> (BridgeNFTFactory, VMContext) {
-        let context = get_context(near(), 30u128.pow(24));
-        testing_env!(context.clone());
-
-        let contract = BridgeNFTFactory::new(prover, nft_eth_address);
-
-        (contract, context)
-    }
-
     #[test]
-    #[should_panic]
-    fn test_fail_deploy_bridge_token() {
-        let mut contract = BridgeNFTFactory::new(mock_prover(), mock_eth_locker_address());
-        assert_eq!(
-            contract.prover_account,
-            mock_prover(),
-            "Contract not set up with correct prover"
-        );
+    fn success_create_factory_contract() {
+        testing_env!(get_context(bridge_token_factory(), 30u128.pow(24)));
+        let contract = BridgeNFTFactory::new(mock_prover(), mock_eth_locker_address());
 
         assert_eq!(
             contract.locker_address,
             validate_eth_address(mock_eth_locker_address()),
-            "Contract not set up with correct eth address"
+            "Locker address not valid"
         );
+        assert_eq!(
+            contract.prover_account,
+            mock_prover(),
+            "Prover account not valid"
+        );
+    }
 
-        contract.deploy_bridge_token(token_locker());
+    #[test]
+    fn success_deploy_bridged_nft() {
+        testing_env!(get_context(bridge_token_factory(), 30u128.pow(24)));
+        let mut contract = BridgeNFTFactory::new(mock_prover(), mock_eth_locker_address());
+        contract.deploy_bridged_token(token_locker());
 
         assert_eq!(
             contract.get_nft_token_account_id(token_locker()),
@@ -501,82 +483,95 @@ mod tests {
     }
 
     #[test]
-    fn test_finish_withdraw() {
-        let (mut contract, mut context) = deploy_contract(mock_prover(), mock_eth_locker_address());
-
-        context.predecessor_account_id = alice();
-        context.attached_deposit = 30u128.pow(24);
-        testing_env!(context.clone());
-
-        contract.deploy_bridge_token(token_locker());
-        context.current_account_id = bridge_token_factory();
-        context.predecessor_account_id = format!("{}.{}", token_locker(), bridge_token_factory());
-        testing_env!(context.clone());
-
-        let address = validate_eth_address(token_locker());
-        assert_eq!(
-            contract.finish_withdraw_to_eth(String::from("1"), token_locker()),
-            ResultType::Withdraw {
-                token: address,
-                recipient: address,
-                token_id: String::from("1"),
-            }
-        );
+    #[should_panic(expected = "Invalid ETH address")]
+    fn fail_deploy_bridged_nft_invalid_address() {
+        testing_env!(get_context(bridge_token_factory(), 30u128.pow(24)));
+        let mut contract = BridgeNFTFactory::new(mock_prover(), mock_eth_locker_address());
+        let invalid_address = "".to_string();
+        contract.deploy_bridged_token(invalid_address);
     }
 
     #[test]
-    fn can_deploy_contract() {
-        let (contract, _) = deploy_contract(mock_prover(), mock_eth_locker_address());
-
-        assert_eq!(
-            contract.prover_account,
-            mock_prover(),
-            "Contract not set up with correct prover"
-        );
+    #[should_panic(expected = "Bridged NFT contract was already deployed.")]
+    fn fail_deploy_bridged_nft_already_deployed() {
+        testing_env!(get_context(bridge_token_factory(), 30u128.pow(24)));
+        let mut contract = BridgeNFTFactory::new(mock_prover(), mock_eth_locker_address());
+        contract.deploy_bridged_token(token_locker());
+        contract.deploy_bridged_token(token_locker());
     }
 
     #[test]
-    fn can_deploy_bridge_nft() {
-        let (mut contract, _) = deploy_contract(mock_prover(), mock_eth_locker_address());
-
-        contract.deploy_bridge_token(mock_eth_nft_address_one());
-        assert_eq!(
-            contract.tokens.contains(&mock_eth_nft_address_one()),
-            true,
-            "Contract did not deploy nft"
-        );
-
-        assert_eq!(
-            contract.tokens.contains(&mock_eth_locker_address()),
-            false,
-            "Contract did not deploy nft"
-        );
-
-        assert_eq!(
-            contract.get_nft_token_account_id(mock_eth_nft_address_one()),
-            format!("{}.{}", mock_eth_nft_address_one(), near())
-        )
+    #[should_panic(
+        expected = "Not enough attached deposit to complete bridge nft token creation 0-4501880000000000000000000"
+    )]
+    fn fail_deploy_bridged_nft_not_enough_attached_deposit() {
+        testing_env!(get_context(bridge_token_factory(), 30u128.pow(24)));
+        let mut contract = BridgeNFTFactory::new(mock_prover(), mock_eth_locker_address());
+        testing_env!(get_context(bridge_token_factory(), 0u128.pow(24)));
+        contract.deploy_bridged_token(token_locker());
     }
     #[test]
-    fn test_deposit_token() {
-        let (mut contract, mut context) = deploy_contract(mock_prover(), token_locker());
+    fn success_finalise_eth_to_near_transfer() {
+        testing_env!(get_context(bridge_token_factory(), 30u128.pow(24)));
+        let mut contract = BridgeNFTFactory::new(mock_prover(), mock_eth_locker_address());
+        contract.deploy_bridged_token(token_locker());
 
-        context.predecessor_account_id = alice();
-        context.attached_deposit = 40u128.pow(24);
-        testing_env!(context.clone());
-
-        let erc20_address = ethereum_address_from_id(0);
-        contract.deploy_bridge_token(erc20_address.clone());
-
-        let proof = create_proof(token_locker(), erc20_address.clone(), String::from("0"));
+        let proof = mock_proof(
+            mock_eth_locker_address(),
+            token_locker().clone(),
+            String::from("0"),
+        );
         contract.finalise_eth_to_near_transfer(proof);
+    }
 
-        let proof2 = create_proof(token_locker(), erc20_address.clone(), String::from("0"));
+    #[test]
+    #[should_panic]
+    fn fail_finalise_eth_to_near_transfer_invalid_locker() {
+        // should_panic: "Event's address {} does not match locker address of this token {}"
+        testing_env!(get_context(bridge_token_factory(), 30u128.pow(24)));
+        let mut contract = BridgeNFTFactory::new(mock_prover(), mock_eth_locker_address());
+        contract.deploy_bridged_token(token_locker());
+        let invalid_locker = token_locker();
+        let proof = mock_proof(invalid_locker, token_locker().clone(), String::from("0"));
+        contract.finalise_eth_to_near_transfer(proof);
+    }
 
-        context.predecessor_account_id = near();
-        testing_env!(context.clone());
+    #[test]
+    #[should_panic]
+    fn fail_finalise_eth_to_near_transfer_bridged_nft_not_deployed() {
+        // should_panic: "Bridged NFT for {} is not deployed yet"
+        testing_env!(get_context(bridge_token_factory(), 30u128.pow(24)));
+        let mut contract = BridgeNFTFactory::new(mock_prover(), mock_eth_locker_address());
+        let proof = mock_proof(
+            mock_eth_locker_address(),
+            token_locker().clone(),
+            String::from("0"),
+        );
+        contract.finalise_eth_to_near_transfer(proof);
+    }
 
-        let event = EthLockedEvent::from_log_entry_data(&proof2.log_entry_data);
-        contract.finish_deposit(true, event.token, event.recipient, event.token_id, proof2);
+    #[test]
+    #[should_panic(expected = "Method is private")]
+    fn success_finish_deposit() {
+        testing_env!(get_context(bridge_token_factory(), 30u128.pow(24)));
+        let mut contract = BridgeNFTFactory::new(mock_prover(), mock_eth_locker_address());
+        contract.deploy_bridged_token(token_locker());
+
+        let proof = mock_proof(
+            mock_eth_locker_address(),
+            token_locker().clone(),
+            String::from("0"),
+        );
+        let event = EthLockedEvent::from_log_entry_data(&proof.log_entry_data);
+        contract.finish_deposit(true, event.token, event.recipient, event.token_id, proof);
+    }
+
+    #[test]
+    #[should_panic(expected = "Only sub accounts of NFT Factory can call this method.")]
+    fn test_finish_withdraw() {
+        testing_env!(get_context(bridge_token_factory(), 30u128.pow(24)));
+        let mut contract = BridgeNFTFactory::new(mock_prover(), mock_eth_locker_address());
+        contract.deploy_bridged_token(token_locker());
+        contract.finish_withdraw_to_eth(String::from("1"), token_locker());
     }
 }

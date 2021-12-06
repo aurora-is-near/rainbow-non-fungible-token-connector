@@ -1,10 +1,12 @@
 use near_contract_standards::non_fungible_token::Token;
-use near_sdk_sim::{
-    call, deploy, init_simulator, to_yocto, view, ContractAccount, UserAccount,
-};
+use near_sdk::json_types::ValidAccountId;
+use near_sdk::test_utils::accounts;
+use near_sdk::AccountId;
+use near_sdk_sim::{call, deploy, init_simulator, to_yocto, view, ContractAccount, UserAccount};
+
 use serde_json::json;
 use std::convert::TryInto;
-use uint::rustc_hex::{FromHex};
+use uint::rustc_hex::FromHex;
 
 use mock_prover::MockProverContract;
 use nft_token_factory::BridgeNFTFactoryContract;
@@ -44,22 +46,22 @@ fn init() -> (
 #[test]
 fn simulate() {
     let (master_account, factory, _) = init();
-    let alice = master_account.create_user(get_alice(), to_yocto("100"));
+    let alice = master_account.create_user(get_alice().into(), to_yocto("100"));
     const BRIDGE_TOKEN_INIT_BALANCE: near_sdk::Balance = 6_000_000_000_000_000_000_000_000;
     call!(
         master_account,
-        factory.new(get_prover(), mock_eth_locker_address())
+        factory.new(get_prover().try_into().unwrap(), mock_eth_locker_address())
     )
     .assert_success();
 
     call!(
         master_account,
-        factory.deploy_bridge_token(mock_eth_nft_address_one()),
+        factory.deploy_bridged_token(mock_eth_nft_address_one()),
         deposit = BRIDGE_TOKEN_INIT_BALANCE
     )
     .assert_success();
 
-    let proof = create_proof(
+    let proof = mock_proof(
         mock_eth_locker_address(),
         mock_eth_nft_address_one(),
         String::from("0"),
@@ -86,18 +88,18 @@ fn simulate() {
     assert!(token.owner_id == get_alice(), "Invalid token owner");
 
     call_json!(
-        alice,
-        nft_account_id.withdraw({"token_id": token.token_id, "recipient":mock_eth_nft_address_one()}),
-        deposit = 1
-    )
-    .assert_success();
+            alice,
+            nft_account_id.withdraw({"token_id": token.token_id, "recipient":mock_eth_nft_address_one()}),
+            deposit = 1
+        )
+        .assert_success();
 
     let token: Option<Token> =
         call_json!(master_account, nft_account_id.nft_token({"token_id": "0"})).unwrap_json();
     assert!(token == None, "Token should be None");
 }
 
-fn create_proof(locker: String, token: String, token_id: String) -> nft_token_factory::Proof {
+fn mock_proof(locker: String, token: String, token_id: String) -> nft_token_factory::Proof {
     let event_data = nft_token_factory::EthLockedEvent {
         locker_address: locker
             .from_hex::<Vec<_>>()
@@ -123,23 +125,24 @@ fn create_proof(locker: String, token: String, token_id: String) -> nft_token_fa
     }
 }
 
-fn get_alice() -> String {
+fn get_alice() -> AccountId {
     "123".to_string()
 }
 
-fn mock_eth_nft_address_one() -> String {
+fn mock_eth_nft_address_one() -> AccountId {
     // no 0x needed
     String::from("629a673a8242c2ac4b7b8c5d8735fbeac21a6205")
 }
 
-fn get_factory() -> String {
+fn get_factory() -> AccountId {
     String::from("bridge")
 }
-fn get_prover() -> String {
+
+fn get_prover() -> AccountId {
     String::from("prover")
 }
 
-fn mock_eth_locker_address() -> String {
+fn mock_eth_locker_address() -> AccountId {
     // no 0x needed
     String::from("57f1887a8bf19b14fc0df6fd9b2acc9af147ea85")
 }
