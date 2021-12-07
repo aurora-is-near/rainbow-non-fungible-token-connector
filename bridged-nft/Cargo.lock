@@ -261,6 +261,7 @@ name = "bridged-nft"
 version = "0.1.0"
 dependencies = [
  "admin-controlled",
+ "hex",
  "near-contract-standards",
  "near-sdk 3.1.0",
  "near-sdk-sim",

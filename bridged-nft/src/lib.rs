@@ -17,6 +17,8 @@ near_sdk::setup_alloc!();
 
 const NO_DEPOSIT: Balance = 0;
 
+pub type EthAddress = [u8; 20];
+
 /// Gas to call finish withdraw method on factory.
 const FINISH_WITHDRAW_GAS: Gas = 50_000_000_000_000;
 
@@ -46,7 +48,8 @@ pub trait ExtBridgeNFTFactory {
     fn finish_withdraw_to_eth(
         &self,
         #[serializer(borsh)] token_id: String,
-        #[serializer(borsh)] recipient: AccountId,
+        #[serializer(borsh)] token_address: EthAddress,
+        #[serializer(borsh)] recipient_address: EthAddress,
     ) -> Promise;
 }
 
@@ -122,7 +125,6 @@ impl BridgedNFT {
     #[payable]
     pub fn withdraw(&mut self, token_id: String, recipient: String) -> Promise {
         self.check_not_paused(PAUSE_WITHDRAW);
-
         // Not returning as its going to cost too much GAS
         assert_one_yocto();
 
@@ -132,12 +134,19 @@ impl BridgedNFT {
             .get(&token_id)
             .expect("Token not found");
 
+        let account = env::current_account_id();
+        let parts: Vec<&str> = account.split(".").collect();
+
         let predecessor_account_id = env::predecessor_account_id();
         if let Some(approvals_by_id) = &mut self.tokens.approvals_by_id {
             let is_authorized: bool = approvals_by_id.contains_key(&predecessor_account_id)
                 || &predecessor_account_id == &self.tokens.owner_by_id.get(&token_id).unwrap();
             assert!(is_authorized, "Unauthorized");
         }
+
+        let token_address = validate_eth_address(parts[0].to_string());
+        let recipient_address = validate_eth_address(recipient);
+
         // burn the token and delete metadata
         self.tokens.owner_by_id.remove(&token_id);
         if let Some(token_metadata_by_id) = &mut self.tokens.token_metadata_by_id {
@@ -152,12 +161,21 @@ impl BridgedNFT {
         // call the nft factory to finish the withdrawal to eth
         ext_bridge_nft_factory::finish_withdraw_to_eth(
             token_id,
-            recipient,
+            token_address,
+            recipient_address,
             &self.controller,
             NO_DEPOSIT,
             FINISH_WITHDRAW_GAS,
         )
     }
+}
+
+pub fn validate_eth_address(address: String) -> EthAddress {
+    let data = hex::decode(address).expect("address should beg a valid hex string.");
+    assert_eq!(data.len(), 20, "address should be 20 bytes long");
+    let mut result = [0u8; 20];
+    result.copy_from_slice(&data);
+    result
 }
 
 near_contract_standards::impl_non_fungible_token_core!(BridgedNFT, tokens);
@@ -178,6 +196,7 @@ mod tests {
     use near_sdk::test_utils::{accounts, VMContextBuilder};
     use near_sdk::MockedBlockchain;
     use near_sdk::{testing_env, VMContext};
+    use std::convert::TryFrom;
 
     fn alice() -> ValidAccountId {
         accounts(0)
@@ -186,7 +205,7 @@ mod tests {
         accounts(1)
     }
     fn nft() -> ValidAccountId {
-        accounts(3)
+        accounts(2)
     }
 
     fn get_context(predecessor_account_id: ValidAccountId, attached_deposit: Balance) -> VMContext {
@@ -318,7 +337,8 @@ mod tests {
     }
 
     #[test]
-    fn success_withdraw_from_token_owner() {
+    #[should_panic(expected = "address should beg a valid hex string.: OddLength")]
+    fn fail_withdraw_invalid_eth_address() {
         testing_env!(get_context(nft(), 11u128.pow(24)).clone());
         let mut contract = BridgedNFT::new();
         contract.nft_mint("0".into(), alice().into(), token_metadata());
