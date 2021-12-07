@@ -291,6 +291,7 @@ name = "bridged-nft"
 version = "0.1.0"
 dependencies = [
  "admin-controlled 0.1.0 (git+https://github.com/near/rainbow-bridge?rev=9ffb08e6613788096f26636f695b4c7e5fa5b261)",
+ "hex",
  "near-contract-standards 3.2.0",
  "near-sdk 3.1.0",
 ]

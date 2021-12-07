@@ -143,24 +143,22 @@ impl BridgeNFTFactory {
     pub fn finish_withdraw_to_eth(
         &mut self,
         #[serializer(borsh)] token_id: String,
-        #[serializer(borsh)] recipient: String,
+        #[serializer(borsh)] token_address: EthAddress,
+        #[serializer(borsh)] recipient_address: EthAddress,
     ) -> ResultType {
-        self.check_not_paused(PAUSE_NEAR_TO_ETH_TRANSFER);
-        let token = env::predecessor_account_id();
-        let parts: Vec<&str> = token.split(".").collect();
+        let caller = env::predecessor_account_id();
+        let address: String = hex::encode(token_address).to_string();
+
         assert_eq!(
-            token,
-            format!("{}.{}", parts[0], env::current_account_id()),
+            caller,
+            format!("{}.{}", &address, env::current_account_id()),
             "Only sub accounts of NFT Factory can call this method."
         );
 
         assert!(
-            self.tokens.contains(&parts[0].to_string()),
+            self.tokens.contains(&address),
             "Such Bridge NFT token does not exist."
         );
-
-        let token_address = validate_eth_address(parts[0].to_string());
-        let recipient_address = validate_eth_address(recipient);
 
         ResultType::Withdraw {
             token: token_address,
@@ -229,6 +227,7 @@ impl BridgeNFTFactory {
         near_sdk::assert_self();
         assert!(verification_success, "Failed to verify the proof");
         let required_deposit = self.record_proof(&proof);
+
         if env::attached_deposit() < required_deposit + self.bridge_token_storage_deposit_required {
             env::panic(b"Attached deposit is not sufficient to record proof");
         }
@@ -564,14 +563,5 @@ mod tests {
         );
         let event = EthLockedEvent::from_log_entry_data(&proof.log_entry_data);
         contract.finish_deposit(true, event.token, event.recipient, event.token_id, proof);
-    }
-
-    #[test]
-    #[should_panic(expected = "Only sub accounts of NFT Factory can call this method.")]
-    fn test_finish_withdraw() {
-        testing_env!(get_context(bridge_token_factory(), 30u128.pow(24)));
-        let mut contract = BridgeNFTFactory::new(mock_prover(), mock_eth_locker_address());
-        contract.deploy_bridged_token(token_locker());
-        contract.finish_withdraw_to_eth(String::from("1"), token_locker());
     }
 }
