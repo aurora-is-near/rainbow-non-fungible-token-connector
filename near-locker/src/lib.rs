@@ -46,7 +46,7 @@ pub trait ExtLocker {
         &mut self,
         token_account_id: AccountId,
         token_id: String,
-        eth_recipient: String,
+        eth_recipient: EthAddress,
     ) -> Promise;
 
     fn finish_unlock(
@@ -65,9 +65,9 @@ pub enum ResultType {
         recipient: AccountId,
     },
     Lock {
+        recipient: EthAddress,
         token_account_id: AccountId,
         token_id: String,
-        recipient: AccountId,
     },
 }
 
@@ -97,7 +97,7 @@ impl Locker {
         eth_recipient: String,
     ) -> Promise {
         assert_one_yocto();
-        is_valid_eth_address(eth_recipient.clone());
+        let recipient = validate_eth_address(eth_recipient.clone());
 
         ext_nft_approval::nft_transfer(
             env::current_account_id(),
@@ -111,7 +111,7 @@ impl Locker {
         .then(ext_self::finish_lock(
             token_account_id,
             token_id,
-            eth_recipient,
+            recipient,
             &env::current_account_id(),
             NO_DEPOSIT,
             FINISH_LOCK_GAS,
@@ -122,7 +122,7 @@ impl Locker {
         &mut self,
         token_account_id: AccountId,
         token_id: String,
-        eth_recipient: String,
+        eth_recipient: EthAddress,
     ) -> ResultType {
         self.check_promise_result(0, String::from("Transfer token failed"));
         ResultType::Lock {
