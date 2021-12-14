@@ -2,9 +2,9 @@
 pragma solidity 0.8.7;
 
 import "hardhat/console.sol";
-import "@openzeppelin/contracts-upgradeable/token/ERC721/ERC721Upgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/token/ERC721/extensions/ERC721BurnableUpgradeable.sol";
 
-contract BridgedNFT is ERC721Upgradeable {
+contract BridgedNFT is ERC721BurnableUpgradeable {
     /// @notice near account id ie: "NFT"
     string public nearAccount;
 
@@ -41,7 +41,7 @@ contract BridgedNFT is ERC721Upgradeable {
     function withdrawNFT(uint256 _tokenId, string memory _recipientNearAccount)
         external
     {
-        _burn(_tokenId);
+        burn(_tokenId);
         
         // emit Withdraw event
         emit Withdraw(
