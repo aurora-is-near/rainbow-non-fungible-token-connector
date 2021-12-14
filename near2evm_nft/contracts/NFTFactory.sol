@@ -4,6 +4,7 @@ pragma solidity 0.8.7;
 import "hardhat/console.sol";
 import "rainbow-bridge/contracts/eth/nearprover/contracts/ProofDecoder.sol";
 import "rainbow-bridge/contracts/eth/nearprover/contracts/INearProver.sol";
+import "./BridgedNFT.sol";
 
 contract NFTFactory {
     using Borsh for Borsh.Data;
@@ -151,5 +152,9 @@ contract NFTFactory {
     /// deployed, if not we deploy a new BridgedNFT contract and store his address inside
     /// bridgedNFTs mapping.
     /// @param _nearAccount the near account name ie: "NFT"
-    function deployBridgedToken(string calldata _nearAccount) external {}
+    function deployBridgedToken(string calldata _nearAccount) external {
+        require(bridgedNFTs[_nearAccount] == address(0), "Contract already exists");
+        address tokenAddress = adddress( new BridgedNFT(_nearAccount, address(this)));
+        bridgedNFTs[_nearAccount] = tokenAddress;
+    }
 }
