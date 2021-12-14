@@ -41,6 +41,8 @@ contract BridgedNFT is ERC721Upgradeable {
     function withdrawNFT(uint256 _tokenId, string memory _recipientNearAccount)
         external
     {
+        _burn(_tokenId);
+        
         // emit Withdraw event
         emit Withdraw(
             address(this),

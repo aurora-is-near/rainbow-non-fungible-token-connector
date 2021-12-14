@@ -92,7 +92,7 @@ fn simulate_lock() {
     // mint nft for alice
     call!(
         master_account,
-        mock_nft.nft_mint(TokenId::from("1"), get_alice(), default_nft_metadata()),
+        mock_nft.nft_mint(TokenId::from("1"), get_alice()),
         deposit = DEPOSIT
     )
     .assert_success();
@@ -100,7 +100,7 @@ fn simulate_lock() {
     // mint nft for alice
     call!(
         master_account,
-        mock_nft.nft_mint(TokenId::from("2"), get_alice(), default_nft_metadata()),
+        mock_nft.nft_mint(TokenId::from("2"), get_alice()),
         deposit = DEPOSIT
     )
     .assert_success();

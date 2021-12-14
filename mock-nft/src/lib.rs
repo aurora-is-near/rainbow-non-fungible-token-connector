@@ -38,16 +38,24 @@ impl MockNFT {
     }
 
     #[payable]
-    pub fn nft_mint(
-        &mut self,
-        token_id: TokenId,
-        receiver_id: ValidAccountId,
-        token_metadata: TokenMetadata,
-    ) -> Token {
+    pub fn nft_mint(&mut self, token_id: TokenId, receiver_id: ValidAccountId) -> Token {
         self.tokens.mint(
             token_id,
             receiver_id.try_into().unwrap(),
-            Some(token_metadata),
+            Some(TokenMetadata {
+                title: None,
+                description: None,
+                media: None,
+                media_hash: None,
+                copies: None,
+                issued_at: None,
+                expires_at: None,
+                starts_at: None,
+                updated_at: None,
+                extra: None,
+                reference: None,
+                reference_hash: None,
+            }),
         )
     }
 }
