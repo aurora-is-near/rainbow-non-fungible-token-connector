@@ -5,9 +5,9 @@ import {
   NFTFactory__factory,
   NearProverMock,
   NearProverMock__factory,
-} from "../typechain";
+} from "../typechain/";
 // import { Signer, Contract, BigNumber } from "ethers";
-// import chai, { expect } from "chai";
+import chai, { expect } from "chai";
 // import { solidity } from "ethereum-waffle";
 // import { Artifact } from "hardhat/types";
 const {
@@ -76,6 +76,17 @@ describe("NodeOperator", function () {
       borshifyOutcomeProof(proof),
       10
     );
+  });
+
+  it("deployBridgedToken", async function () {
+    await NFTFactoryContract.deployBridgedToken(
+      "SampleNFT"
+    );
+    await expect(
+      NFTFactoryContract.deployBridgedToken(
+        "SampleNFT"
+      )
+    ).to.revertedWith("Contract already exists");
   });
 
   const proof = require("./proof1.json");
