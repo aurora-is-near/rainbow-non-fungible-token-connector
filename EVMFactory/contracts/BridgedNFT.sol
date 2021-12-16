@@ -5,9 +5,10 @@ import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import "@openzeppelin/contracts/token/ERC721/extensions/ERC721Burnable.sol";
 import "@openzeppelin/contracts/token/ERC721/extensions/ERC721Pausable.sol";
 import "@openzeppelin/contracts/token/ERC721/extensions/ERC721Enumerable.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
 import "./interfaces/INFTFactory.sol";
 
-contract BridgedNFT is ERC721Enumerable, ERC721Burnable, ERC721Pausable {
+contract BridgedNFT is Ownable, ERC721Enumerable, ERC721Burnable, ERC721Pausable {
     /// @notice near account id
     string public nearAccount;
 
@@ -23,11 +24,12 @@ contract BridgedNFT is ERC721Enumerable, ERC721Burnable, ERC721Pausable {
         string recipient
     );
 
-    constructor(string memory _nearAccount, address _nftFactory)
-        ERC721("", "")
+    constructor(string memory _nearAccount, address _nftFactory, address _owner)
+        ERC721("", "") Ownable()
     {
         nearAccount = _nearAccount;
         nftFactory = _nftFactory;
+        _transferOwnership(_owner);
     }
 
     /// @notice This function should only be called from the nft factory, it allows to mint a

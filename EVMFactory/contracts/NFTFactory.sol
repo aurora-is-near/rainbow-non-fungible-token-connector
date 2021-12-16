@@ -158,7 +158,7 @@ contract NFTFactory is AdminControlled {
             "Contract already deployed"
         );
         address tokenAddress = address(
-            new BridgedNFT(_nearAccount, address(this))
+            new BridgedNFT(_nearAccount, address(this), admin)
         );
         bridgedNFTs[_nearAccount] = tokenAddress;
     }
