@@ -1,19 +1,18 @@
 //SPDX-License-Identifier: Unlicense
 pragma solidity 0.8.7;
 
-import "hardhat/console.sol";
 import "rainbow-bridge/contracts/eth/nearprover/contracts/ProofDecoder.sol";
 import "rainbow-bridge/contracts/eth/nearprover/contracts/INearProver.sol";
+import "rainbow-bridge/contracts/eth/nearbridge/contracts/AdminControlled.sol";
 import "./BridgedNFT.sol";
 
-contract NFTFactory {
+contract NFTFactory is AdminControlled {
     using Borsh for Borsh.Data;
     using ProofDecoder for Borsh.Data;
 
     event ConsumedProof(bytes32 indexed _receiptId);
 
     /// @notice this mapping stores the near contract name with the evm contract copy address.
-    /// ie: NFT => 0x123456
     mapping(string => address) public bridgedNFTs;
 
     /// @notice the near prover address.
@@ -23,16 +22,24 @@ contract NFTFactory {
     bytes public nearLocker;
 
     /// @notice the near prover address.
-    uint64 minBlockAcceptanceHeight;
+    uint64 public minBlockAcceptanceHeight;
 
-    // OutcomeReciptId -> Used
+    /// @notice OutcomeReciptId -> Used.
     mapping(bytes32 => bool) public usedEvents;
 
-    constructor(
+    /// @notice pause the finaliseNearToEthTransfer function.
+    uint8 public constant PAUSE_FINALISE_FROM_NEAR = 1 << 0;
+
+    /// @notice pause all the bridged withdraw process.
+    bool public pauseBridgedWithdraw;
+
+    function initialize(
         INearProver _nearProver,
         bytes memory _nearLocker,
-        uint64 _minBlockAcceptanceHeight
-    ) {
+        uint64 _minBlockAcceptanceHeight,
+        uint256 _flags
+    ) external initializer {
+        __AdminControlled_init(_flags);
         nearProver = _nearProver;
         minBlockAcceptanceHeight = _minBlockAcceptanceHeight;
         nearLocker = _nearLocker;
@@ -40,12 +47,12 @@ contract NFTFactory {
 
     /// @notice This function allows to finalise the bridge process by calling the
     /// evm contract and mint the new token.
-    /// @dev ***DON'T DO THIS ONE FOR NOW***.
     /// @param _proofData near proof.
+    /// @param _proofBlockHeader proof block header.
     function finaliseNearToEthTransfer(
         bytes calldata _proofData,
         uint64 _proofBlockHeader
-    ) external {
+    ) external pausable(PAUSE_FINALISE_FROM_NEAR) {
         ProofDecoder.ExecutionStatus memory status = _parseAndConsumeProof(
             _proofData,
             _proofBlockHeader
@@ -67,14 +74,10 @@ contract NFTFactory {
         );
         uint256 tokenId = stringToUint(tokenIdAsString);
 
-        //TODO: check if the contract was already deployed add added to "bridgedNFTs" mapping
-        // accountID: the near contract name "NFT"
-
-
-        // TODO: call the spécific Bridged contract and mint new Token using
-        // recipient: the eth account that will receive the token
-        // accountID: the near contract name "NFT"
-        // tokenID: uint256
+        // mint new nft
+        address erc721Address = bridgedNFTs[accountID];
+        require(erc721Address != address(0), "Contract not deployed");
+        BridgedNFT(erc721Address).mintNFT(tokenId, recipient);
     }
 
     function _parseAndConsumeProof(
@@ -147,14 +150,22 @@ contract NFTFactory {
         return result;
     }
 
-    /// @notice Deploy a new Bridged (ERC721) contract.
-    /// @dev before deploying the contract we have to check if the contract was already
-    /// deployed, if not we deploy a new BridgedNFT contract and store his address inside
-    /// bridgedNFTs mapping.
-    /// @param _nearAccount the near account name ie: "NFT"
+    /// @notice Deploy a new Bridged Bridged contract.
+    /// @param _nearAccount the nft near account id.
     function deployBridgedToken(string calldata _nearAccount) external {
-        require(bridgedNFTs[_nearAccount] == address(0), "Contract already exists");
-        address tokenAddress = address( new BridgedNFT(_nearAccount, address(this)));
+        require(
+            bridgedNFTs[_nearAccount] == address(0),
+            "Contract already deployed"
+        );
+        address tokenAddress = address(
+            new BridgedNFT(_nearAccount, address(this))
+        );
         bridgedNFTs[_nearAccount] = tokenAddress;
+    }
+
+    /// @notice Set pause bridged withdraw.
+    /// @param _paused pause the withdraw process.
+    function setPauseBridgedWithdraw(bool _paused) external {
+        pauseBridgedWithdraw = _paused;
     }
 }
