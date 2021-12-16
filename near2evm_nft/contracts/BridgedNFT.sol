@@ -1,15 +1,18 @@
 //SPDX-License-Identifier: Unlicense
 pragma solidity 0.8.7;
 
-import "hardhat/console.sol";
-import "@openzeppelin/contracts-upgradeable/token/ERC721/extensions/ERC721BurnableUpgradeable.sol";
+import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
+import "@openzeppelin/contracts/token/ERC721/extensions/ERC721Burnable.sol";
+import "@openzeppelin/contracts/token/ERC721/extensions/ERC721Pausable.sol";
+import "@openzeppelin/contracts/token/ERC721/extensions/ERC721Enumerable.sol";
+import "./interfaces/INFTFactory.sol";
 
-contract BridgedNFT is ERC721BurnableUpgradeable {
-    /// @notice near account id ie: "NFT"
+contract BridgedNFT is ERC721Enumerable, ERC721Burnable, ERC721Pausable {
+    /// @notice near account id
     string public nearAccount;
 
     /// @notice the bridge factory address.
-    address public bridgeFactory;
+    address public nftFactory;
 
     /// @notice Withdraw event.
     event Withdraw(
@@ -20,29 +23,31 @@ contract BridgedNFT is ERC721BurnableUpgradeable {
         string recipient
     );
 
-    constructor(string memory _nearAccount, address _bridgeFactory) {
-        __ERC721_init("", "");
+    constructor(string memory _nearAccount, address _nftFactory)
+        ERC721("", "")
+    {
         nearAccount = _nearAccount;
-        bridgeFactory = _bridgeFactory;
+        nftFactory = _nftFactory;
     }
 
-    /// @notice This function should only be called from the factory, it allows to mint a
-    /// new nft token
-    /// @dev check if the token id not exists, then mint a new one by calling _mint function
-    /// inherited from the ERC721Upgradeable then pass _recipient and _tokenId.
+    /// @notice This function should only be called from the nft factory, it allows to mint a
+    /// new nft token.
     /// @param _tokenId nft token id.
     /// @param _recipient owner of the nft.
-    function mintNFT(uint256 _tokenId, address _recipient) external {}
+    function mintNFT(uint256 _tokenId, address _recipient) external {
+        require(msg.sender == nftFactory, "Caller is not the nft factory");
+        _safeMint(_recipient, _tokenId);
+    }
 
     /// @notice This function allows to start the process of unlock the token from near side,
     /// by burning the nft token.
-    /// @dev Burn the token, then emit an event
     /// @param _tokenId nft token id.
     function withdrawNFT(uint256 _tokenId, string memory _recipientNearAccount)
         external
     {
-        burn(_tokenId);
-        
+        require(!INFTFactory(nftFactory).pauseBridgedWithdraw(), "Withdrawal is disabled");
+        _burn(_tokenId);
+
         // emit Withdraw event
         emit Withdraw(
             address(this),
@@ -51,5 +56,23 @@ contract BridgedNFT is ERC721BurnableUpgradeable {
             _tokenId,
             _recipientNearAccount
         );
+    }
+
+    function _beforeTokenTransfer(
+        address from,
+        address to,
+        uint256 tokenId
+    ) internal virtual override(ERC721, ERC721Enumerable, ERC721Pausable) {
+        super._beforeTokenTransfer(from, to, tokenId);
+    }
+
+    function supportsInterface(bytes4 interfaceId)
+        public
+        view
+        virtual
+        override(ERC721, ERC721Enumerable)
+        returns (bool)
+    {
+        return super.supportsInterface(interfaceId);
     }
 }
