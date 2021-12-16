@@ -1,3 +1,4 @@
+use admin_controlled::{AdminControlled, Mask};
 use near_contract_standards::non_fungible_token::TokenId;
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::json_types::ValidAccountId;
@@ -19,6 +20,8 @@ const NO_DEPOSIT: Balance = 0;
 const TRANSFER_FROM_GAS: Gas = 50_000_000_000_000;
 const FINISH_LOCK_GAS: Gas = 10_000_000_000_000;
 const VERIFY_LOG_ENTRY_GAS: Gas = 50_000_000_000_000;
+
+const PAUSE_LOCK_TOKEN: Mask = 1 << 0;
 
 #[ext_contract(ext_nft_approval)]
 pub trait ExtNFTContract {
@@ -76,6 +79,7 @@ pub enum ResultType {
 pub struct Locker {
     eth_factory_address: EthAddress,
     prover_account: ValidAccountId,
+    paused: Mask
 }
 
 #[near_bindgen]
@@ -86,6 +90,7 @@ impl Locker {
         Self {
             eth_factory_address: validate_eth_address(eth_factory_address),
             prover_account: prover_account,
+            paused: Mask::default(),
         }
     }
 
@@ -96,6 +101,7 @@ impl Locker {
         token_id: String,
         eth_recipient: String,
     ) -> Promise {
+        self.check_not_paused(PAUSE_LOCK_TOKEN);
         assert_one_yocto();
         let recipient = validate_eth_address(eth_recipient.clone());
 
@@ -207,3 +213,5 @@ pub fn is_valid_eth_address(address: String) {
     }
     assert!(valid, "Invalid ETH address")
 }
+
+admin_controlled::impl_admin_controlled!(Locker, paused);
