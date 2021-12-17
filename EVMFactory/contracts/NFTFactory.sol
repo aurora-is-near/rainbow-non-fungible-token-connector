@@ -152,13 +152,17 @@ contract NFTFactory is AdminControlled {
 
     /// @notice Deploy a new Bridged Bridged contract.
     /// @param _nearAccount the nft near account id.
-    function deployBridgedToken(string calldata _nearAccount) external {
+    function deployBridgedToken(
+        string calldata _nearAccount,
+        string memory _name,
+        string memory _symbol
+    ) external {
         require(
             bridgedNFTs[_nearAccount] == address(0),
             "Contract already deployed"
         );
         address tokenAddress = address(
-            new BridgedNFT(_nearAccount, address(this), admin)
+            new BridgedNFT(_nearAccount, address(this), admin, _name, _symbol)
         );
         bridgedNFTs[_nearAccount] = tokenAddress;
     }

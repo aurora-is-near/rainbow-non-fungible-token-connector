@@ -8,7 +8,12 @@ import "@openzeppelin/contracts/token/ERC721/extensions/ERC721Enumerable.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "./interfaces/INFTFactory.sol";
 
-contract BridgedNFT is Ownable, ERC721Enumerable, ERC721Burnable, ERC721Pausable {
+contract BridgedNFT is
+    Ownable,
+    ERC721Enumerable,
+    ERC721Burnable,
+    ERC721Pausable
+{
     /// @notice near account id
     string public nearAccount;
 
@@ -24,9 +29,13 @@ contract BridgedNFT is Ownable, ERC721Enumerable, ERC721Burnable, ERC721Pausable
         string recipient
     );
 
-    constructor(string memory _nearAccount, address _nftFactory, address _owner)
-        ERC721("", "") Ownable()
-    {
+    constructor(
+        string memory _nearAccount,
+        address _nftFactory,
+        address _owner,
+        string memory _name,
+        string memory _symbol
+    ) ERC721(_name, _symbol) Ownable() {
         nearAccount = _nearAccount;
         nftFactory = _nftFactory;
         _transferOwnership(_owner);
@@ -47,7 +56,10 @@ contract BridgedNFT is Ownable, ERC721Enumerable, ERC721Burnable, ERC721Pausable
     function withdrawNFT(uint256 _tokenId, string memory _recipientNearAccount)
         external
     {
-        require(!INFTFactory(nftFactory).pauseBridgedWithdraw(), "Withdrawal is disabled");
+        require(
+            !INFTFactory(nftFactory).pauseBridgedWithdraw(),
+            "Withdrawal is disabled"
+        );
         _burn(_tokenId);
 
         // emit Withdraw event

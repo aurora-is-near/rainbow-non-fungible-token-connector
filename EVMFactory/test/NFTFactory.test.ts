@@ -58,7 +58,7 @@ describe("NodeOperator", function () {
   });
 
   it("Success finaliseNearToEthTransfer", async function () {
-    await NFTFactoryContract.deployBridgedToken("NFT");
+    await NFTFactoryContract.deployBridgedToken("NFT", "", "");
     const bridgedNFTArtifact = await hardhat.artifacts.readArtifact(
       "BridgedNFT"
     );
@@ -112,14 +112,14 @@ describe("NodeOperator", function () {
   });
 
   it("deployBridgedToken", async function () {
-    await NFTFactoryContract.deployBridgedToken("SampleNFT");
+    await NFTFactoryContract.deployBridgedToken("SampleNFT", "", "");
     await expect(
-      NFTFactoryContract.deployBridgedToken("SampleNFT")
+      NFTFactoryContract.deployBridgedToken("SampleNFT", "", "")
     ).to.revertedWith("Contract already deployed");
   });
 
   it("Success withdraw", async function () {
-    await NFTFactoryContract.deployBridgedToken("NFT");
+    await NFTFactoryContract.deployBridgedToken("NFT", "", "");
     const bridgedNFTArtifact = await hardhat.artifacts.readArtifact(
       "BridgedNFT"
     );
@@ -135,7 +135,7 @@ describe("NodeOperator", function () {
   });
 
   it("Fail withdraw, contract is paused", async function () {
-    await NFTFactoryContract.deployBridgedToken("NFT");
+    await NFTFactoryContract.deployBridgedToken("NFT", "", "");
     const bridgedNFTArtifact = await hardhat.artifacts.readArtifact(
       "BridgedNFT"
     );
@@ -152,7 +152,7 @@ describe("NodeOperator", function () {
   });
 
   it("Fail proof used many times", async function () {
-    await NFTFactoryContract.deployBridgedToken("NFT");
+    await NFTFactoryContract.deployBridgedToken("NFT", "", "");
     await mintNFT("22", "NFT");
     await expect(mintNFT("22", "NFT")).revertedWith(
       "The lock event cannot be reused"
