@@ -23,16 +23,16 @@ contract Locker is Initializable {
     // OutcomeReciptId -> Used
     mapping(bytes32 => bool) public usedEvents;
 
-    function __Locker_init(
+    constructor(
         bytes memory _nearTokenFactory,
         INearProver _nearProver,
         uint64 _minBlockAcceptanceHeight
-    ) public initializer {
-        condition(
+    ) {
+        require(
             _nearTokenFactory.length > 0,
             "Invalid Near Token Factory address"
         );
-        condition(
+        require(
             address(_nearProver) != address(0),
             "Invalid Near prover address"
         );
@@ -46,7 +46,7 @@ contract Locker is Initializable {
         bytes memory proofData,
         uint64 proofBlockHeight
     ) internal returns (ProofDecoder.ExecutionStatus memory result) {
-        condition(
+        require(
             nearProver.proveOutcome(proofData, proofBlockHeight),
             "Proof should be valid"
         );
@@ -56,7 +56,7 @@ contract Locker is Initializable {
         ProofDecoder.FullOutcomeProof memory fullOutcomeProof = borshData
             .decodeFullOutcomeProof();
 
-        condition(
+        require(
             fullOutcomeProof.block_header_lite.inner_lite.height >=
                 minBlockAcceptanceHeight,
             "Proof is from the ancient block"
@@ -67,10 +67,10 @@ contract Locker is Initializable {
             .outcome_with_id
             .outcome
             .receipt_ids[0];
-        condition(!usedEvents[receiptId], "The burn event cannot be reused");
+        require(!usedEvents[receiptId], "The burn event cannot be reused");
         usedEvents[receiptId] = true;
 
-        condition(
+        require(
             keccak256(
                 fullOutcomeProof
                     .outcome_proof
@@ -82,19 +82,15 @@ contract Locker is Initializable {
         );
 
         result = fullOutcomeProof.outcome_proof.outcome_with_id.outcome.status;
-        condition(
+        require(
             !result.failed,
             "Cannot use failed execution outcome for unlocking the tokens."
         );
-        condition(
+        require(
             !result.unknown,
             "Cannot use unknown execution outcome for unlocking the tokens."
         );
 
         emit ConsumedProof(receiptId);
-    }
-
-    function condition(bool _condition, string memory _message) internal pure {
-        require(_condition, _message);
     }
 }

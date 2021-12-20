@@ -1,6 +1,6 @@
 const { expect } = require('chai');
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers";
-import hardhat, { ethers, upgrades } from "hardhat";
+import hardhat, { ethers } from "hardhat";
 const { serialize } = require('rainbow-bridge-lib/rainbow/borsh.js');
 const { borshifyOutcomeProof } = require('rainbow-bridge-lib/rainbow/borshify-proof.js');
 import {
@@ -57,12 +57,13 @@ beforeEach("Setup contract", async () => {
     ) as ERC721Locker__factory;
 
     ERC721LockerContract = (
-        await upgrades.deployProxy(ERC721LockerFactory, [
+        await ERC721LockerFactory.deploy(
             Buffer.from('nearnonfuntoken', 'utf-8'),
             NearProverMockContract.address,
             0,
+            accounts[0].address,
             1
-        ])
+        )
     ) as ERC721Locker;
 
     await ERC721LockerContract.deployed();
@@ -143,39 +144,6 @@ describe("Locking for Near", async () => {
         );
         expect(await ERC721BurnableMockContract.ownerOf(tokenId))
             .equal(accounts[0].address)
-    });
-
-    it('fail unlock proof outdated', async () => {
-        let tokenId = 1;
-        let nearAccount = "mynearaccount.near";
-
-        await ERC721BurnableMockContract.connect(accounts[0]).mint()
-        await ERC721BurnableMockContract.approve(ERC721LockerContract.address, 1)
-
-        await ERC721LockerContract.connect(accounts[0]).migrateTokenToNear(
-            ERC721BurnableMockContract.address,
-            tokenId,
-            nearAccount
-        )
-
-        for (let i = 1; i <= 1; i++) {
-            let proof = require(`./proof${i}.json`);
-            proof.outcome_proof.outcome.status.SuccessValue = serialize(SCHEMA, 'Withdraw', {
-                flag: 0,
-                token: hardhat.ethers.utils.arrayify(ERC721BurnableMockContract.address),
-                recipient: hardhat.ethers.utils.arrayify(accounts[0].address),
-                tokenIdStringLength: int32ToBytes(1),
-                tokenId: Buffer.from('1', 'utf-8'),
-            }).toString('base64')
-
-            await ERC721LockerContract.setMinBlockAcceptanceHeight(
-                proof.block_header_lite.inner_lite.height + 10
-            )
-            await expect(ERC721LockerContract.finishNearToEthMigration(
-                borshifyOutcomeProof(proof), 1099
-            )).revertedWith("Proof is from the ancient block");
-        }
-
     });
 });
 
