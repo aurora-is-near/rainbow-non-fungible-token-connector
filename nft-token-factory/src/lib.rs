@@ -24,24 +24,28 @@ const CONTROLLER_STORAGE_KEY: &[u8] = b"aCONTROLLER";
 /// Initial balance for the BridgeNFT contract to cover storage and related.
 const BRIDGE_TOKEN_INIT_BALANCE: Balance = 4_500_000_000_000_000_000_000_000; // 3e24yN, 4.5N
 
-/// Gas to initialize BridgeNFT contract.
+/// Gas to initialize BridgeToken contract.
 const BRIDGE_TOKEN_NEW: Gas = 50_000_000_000_000;
 
 /// Gas to call mint method on bridge nft.
-const MINT_GAS: Gas = 50_000_000_000_000; // todo correct this value to mainnet value
+const MINT_GAS: Gas = 50_000_000_000_000;
 
 /// Gas to call finalise method.
-const FINISH_FINALISE_GAS: Gas = 50_000_000_000_000; // todo correct this value to mainnet value
+const FINISH_FINALISE_GAS: Gas = 50_000_000_000_000;
 
-const SET_METADATA_GAS: Gas = 10_000_000_000_000; // todo correct this value to mainnet value
-const UPDATE_TOKEN_OWNER_GAS: Gas = 10_000_000_000_000; // todo correct this value to mainnet value
+/// Amount of gas used by bridge token to set the metadata.
+const SET_METADATA_GAS: Gas = 10_000_000_000_000;
+
+/// Amount of gas used to update token owner.
+const UPDATE_TOKEN_OWNER_GAS: Gas = 10_000_000_000_000;
 
 /// Gas to call verify_log_entry on prover.
 const VERIFY_LOG_ENTRY_GAS: Gas = 50_000_000_000_000;
 
 const PAUSE_DEPLOY_TOKEN: Mask = 1 << 0;
+
 const PAUSE_ETH_TO_NEAR_TRANSFER: Mask = 1 << 1;
-const PAUSE_NEAR_TO_ETH_TRANSFER: Mask = 1 << 1;
+// const PAUSE_NEAR_TO_ETH_TRANSFER: Mask = 1 << 1;
 
 #[derive(Debug, Eq, PartialEq, BorshSerialize, BorshDeserialize)]
 pub enum ResultType {
@@ -102,6 +106,10 @@ pub trait ExtBridgedNFT {
     fn is_owner(&mut self) -> bool;
 }
 
+pub fn assert_self() {
+    assert_eq!(env::predecessor_account_id(), env::current_account_id());
+}
+
 #[near_bindgen]
 impl BridgeNFTFactory {
     #[init]
@@ -114,7 +122,10 @@ impl BridgeNFTFactory {
             used_events: UnorderedSet::new(b"u".to_vec()),
             owner_pk: env::signer_account_pk(),
             owner_id: env::signer_account_id(),
-            bridge_token_storage_deposit_required: env::storage_byte_cost() * 237, // this can be verified by calling storage_cost_per_nft() in bridge_nft.wasm when deployed
+            bridge_token_storage_deposit_required:
+                near_contract_standards::fungible_token::FungibleToken::new(b"t".to_vec())
+                    .account_storage_usage as Balance
+                    * env::storage_byte_cost(),
             paused: Mask::default(),
         }
     }
@@ -234,7 +245,6 @@ impl BridgeNFTFactory {
         if env::attached_deposit() < required_deposit + self.bridge_token_storage_deposit_required {
             env::panic(b"Attached deposit is not sufficient to record proof");
         }
-        // let owner_pk: ValidAccountId = new_owner_pk.try_into().unwrap();
         let log = EthLockedEvent::from_log_entry_data(&proof.log_entry_data);
 
         ext_bridge_nft::nft_mint(
@@ -254,15 +264,10 @@ impl BridgeNFTFactory {
                 reference: None,
                 reference_hash: None,
             },
-            &self.get_nft_token_account_id(token),
+            &self.get_bridge_nft_token_account_id(token),
             env::attached_deposit() - required_deposit,
             MINT_GAS,
         )
-    }
-
-    /// Checks whether the provided proof is already used
-    pub fn is_used_proof(&self, #[serializer(borsh)] proof: Proof) -> bool {
-        self.used_events.contains(&proof.get_key())
     }
 
     #[payable]
@@ -270,6 +275,7 @@ impl BridgeNFTFactory {
         self.check_not_paused(PAUSE_DEPLOY_TOKEN);
 
         let address = address.to_lowercase();
+
         // check if the eth address is valid.
         is_valid_eth_address(address.clone());
 
@@ -293,7 +299,7 @@ impl BridgeNFTFactory {
             min_required_deposit
         );
 
-        let bridge_token_account_id = format!("{}.{}", address, env::current_account_id());
+        let bridge_token_account_id = self.get_bridge_nft_token_account_id(address);
         Promise::new(bridge_token_account_id)
             .create_account()
             .transfer(BRIDGE_TOKEN_INIT_BALANCE)
@@ -316,7 +322,7 @@ impl BridgeNFTFactory {
 
         ext_bridge_nft::set_metadata(
             metadata,
-            &self.get_nft_token_account_id(address),
+            &self.get_bridge_nft_token_account_id(address),
             env::attached_deposit(),
             SET_METADATA_GAS,
         )
@@ -327,37 +333,22 @@ impl BridgeNFTFactory {
 
         ext_bridge_nft::set_token_owner_account_id(
             new_owner,
-            &self.get_nft_token_account_id(address),
+            &self.get_bridge_nft_token_account_id(address),
             env::attached_deposit(),
             UPDATE_TOKEN_OWNER_GAS,
         );
     }
 
-    pub fn add_full_key_to_bridge_nft_account(&mut self, eth_address: String, key: PublicKey) {
-        self.is_owner();
-        let address = eth_address.to_lowercase();
-        is_valid_eth_address(address.clone());
-        self.token_exists(address.clone());
-
-        let bridge_token_account_id = format!("{}.{}", address, env::current_account_id());
-        Promise::new(bridge_token_account_id).add_full_access_key(key);
-    }
-
-    pub fn delete_full_key_from_bridge_nft_account(&mut self, eth_address: String, key: PublicKey) {
-        self.is_owner();
-        let address = eth_address.to_lowercase();
-        is_valid_eth_address(address.clone());
-        self.token_exists(address.clone());
-
-        let bridge_token_account_id = format!("{}.{}", address, env::current_account_id());
-        Promise::new(bridge_token_account_id).delete_key(key);
-    }
-
-    pub fn get_nft_token_account_id(&self, eth_address: String) -> AccountId {
+    pub fn get_bridge_nft_token_account_id(&self, eth_address: String) -> AccountId {
         let address = eth_address.to_lowercase();
         is_valid_eth_address(address.clone());
         self.token_exists(address.clone());
         format!("{}.{}", address, env::current_account_id())
+    }
+
+     /// Checks whether the provided proof is already used
+     pub fn is_used_proof(&self, #[serializer(borsh)] proof: Proof) -> bool {
+        self.used_events.contains(&proof.get_key())
     }
 
     /// Record proof to make sure it is not re-used later for anther deposit.
@@ -502,7 +493,7 @@ mod tests {
         contract.deploy_bridged_token(token_locker());
 
         assert_eq!(
-            contract.get_nft_token_account_id(token_locker()),
+            contract.get_bridge_nft_token_account_id(token_locker()),
             format!("{}.{}", token_locker(), bridge_token_factory())
         )
     }
