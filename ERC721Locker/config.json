@@ -1,0 +1,17 @@
+{
+  "mainnet": {
+    "nearProver": ""
+  },
+  "ropsten": {
+    "nearProver": ""
+  },
+  "rinkeby": {
+    "nearProver": ""
+  },
+  "kovan": {
+    "nearProver": ""
+  },
+  "goerli": {
+    "nearProver": ""
+  }
+}

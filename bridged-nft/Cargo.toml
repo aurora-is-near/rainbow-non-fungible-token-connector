@@ -1,0 +1,18 @@
+[package]
+name = "bridged-nft"
+version = "0.1.0"
+authors = ["idirall22 <idirall22@gmail.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+near-sdk = "3.1"
+near-contract-standards = "3.1"
+admin-controlled = { git = "https://github.com/near/rainbow-bridge", rev = "9ffb08e6613788096f26636f695b4c7e5fa5b261" }
+hex = "0.4.2"
+
+[dev-dependencies]
+near-sdk-sim = "3.1.0"
