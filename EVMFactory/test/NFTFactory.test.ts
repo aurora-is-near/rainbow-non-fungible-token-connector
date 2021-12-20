@@ -1,5 +1,5 @@
 import { expect } from "chai";
-import hardhat, { ethers, upgrades } from "hardhat";
+import hardhat, { ethers } from "hardhat";
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers";
 import {
   NFTFactory,
@@ -49,12 +49,13 @@ describe("NodeOperator", function () {
       (await hardhat.ethers.getContractFactory(
         "NFTFactory"
       )) as NFTFactory__factory;
-    NFTFactoryContract = (await upgrades.deployProxy(nftFactoryArtifact, [
+    NFTFactoryContract = (await nftFactoryArtifact.deploy(
       NearMockContract.address,
       Buffer.from("nearnonfuntoken", "utf-8"),
       0,
-      0,
-    ])) as NFTFactory;
+      signer.address,
+      0
+    )) as NFTFactory;
   });
 
   it("Success finaliseNearToEthTransfer", async function () {

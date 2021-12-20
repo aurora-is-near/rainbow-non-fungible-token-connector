@@ -34,7 +34,7 @@
     "hardhat-gas-reporter": "^1.0.4",
     "prettier": "^2.3.2",
     "prettier-plugin-solidity": "^1.0.0-beta.13",
-    "rainbow-bridge": "https://github.com/Shard-Labs/rainbow-bridge#2fb19425996bd9d9c2943e5ef071013dc55c7dc4",
+    "rainbow-bridge": "https://github.com/aurora-is-near/rainbow-bridge#e75df9c132d085a373731ffcff6420becc2c0cb5",
     "rainbow-bridge-lib": "https://github.com/near/rainbow-bridge-lib",
     "solhint": "^3.3.6",
     "solidity-coverage": "^0.7.16",

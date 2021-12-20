@@ -33,13 +33,13 @@ contract NFTFactory is AdminControlled {
     /// @notice pause all the bridged withdraw process.
     bool public pauseBridgedWithdraw;
 
-    function initialize(
+    constructor(
         INearProver _nearProver,
         bytes memory _nearLocker,
         uint64 _minBlockAcceptanceHeight,
+        address _admin,
         uint256 _flags
-    ) external initializer {
-        __AdminControlled_init(_flags);
+    ) AdminControlled(_admin, _flags) {
         nearProver = _nearProver;
         minBlockAcceptanceHeight = _minBlockAcceptanceHeight;
         nearLocker = _nearLocker;

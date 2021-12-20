@@ -8137,9 +8137,9 @@ queue-microtask@^1.2.2:
     tweetnacl "^1.0.3"
     web3 "=1.2.6"
 
-"rainbow-bridge@https://github.com/Shard-Labs/rainbow-bridge#2fb19425996bd9d9c2943e5ef071013dc55c7dc4":
+"rainbow-bridge@https://github.com/aurora-is-near/rainbow-bridge#e75df9c132d085a373731ffcff6420becc2c0cb5":
   version "1.0.0"
-  resolved "https://github.com/Shard-Labs/rainbow-bridge#2fb19425996bd9d9c2943e5ef071013dc55c7dc4"
+  resolved "https://github.com/aurora-is-near/rainbow-bridge#e75df9c132d085a373731ffcff6420becc2c0cb5"
 
 randombytes@^2.0.0, randombytes@^2.0.1, randombytes@^2.0.5, randombytes@^2.0.6, randombytes@^2.1.0:
   version "2.1.0"
