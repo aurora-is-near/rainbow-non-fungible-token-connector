@@ -18,6 +18,9 @@ near_sdk::setup_alloc!();
 
 const NO_DEPOSIT: Balance = 0;
 
+/// Controller storage key.
+const CONTROLLER_STORAGE_KEY: &[u8] = b"aCONTROLLER";
+
 /// Initial balance for the BridgeNFT contract to cover storage and related.
 const BRIDGE_TOKEN_INIT_BALANCE: Balance = 4_500_000_000_000_000_000_000_000; // 3e24yN, 4.5N
 
@@ -375,6 +378,27 @@ impl BridgeNFTFactory {
             Balance::from(current_storage - initial_storage) * env::storage_byte_cost();
 
         required_deposit
+    }
+
+    /// Factory Controller. Controller has extra privileges inside this contract.
+    pub fn controller(&self) -> Option<AccountId> {
+        env::storage_read(CONTROLLER_STORAGE_KEY)
+            .map(|value| String::from_utf8(value).expect("Invalid controller account id"))
+    }
+
+    pub fn set_controller(&mut self, controller: AccountId) {
+        assert!(self.controller_or_self());
+        assert!(env::is_valid_account_id(controller.as_bytes()));
+        env::storage_write(CONTROLLER_STORAGE_KEY, controller.as_bytes());
+    }
+
+    pub fn controller_or_self(&self) -> bool {
+        let caller = env::predecessor_account_id();
+        caller == env::current_account_id()
+            || self
+                .controller()
+                .map(|controller| controller == caller)
+                .unwrap_or(false)
     }
 }
 
