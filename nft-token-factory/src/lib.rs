@@ -257,6 +257,11 @@ impl BridgeNFTFactory {
         )
     }
 
+    /// Checks whether the provided proof is already used
+    pub fn is_used_proof(&self, #[serializer(borsh)] proof: Proof) -> bool {
+        self.used_events.contains(&proof.get_key())
+    }
+
     #[payable]
     pub fn deploy_bridged_token(&mut self, address: String) -> Promise {
         self.check_not_paused(PAUSE_DEPLOY_TOKEN);
@@ -358,10 +363,7 @@ impl BridgeNFTFactory {
         //       log_index / receipt_index / header_data
         near_sdk::assert_self();
         let initial_storage = env::storage_usage();
-        let mut data = proof.log_index.try_to_vec().unwrap();
-        data.extend(proof.receipt_index.try_to_vec().unwrap());
-        data.extend(proof.header_data.clone());
-        let key = env::sha256(&data);
+        let key = &proof.get_key();
         assert!(
             !self.used_events.contains(&key),
             "Event cannot be reused for depositing."
