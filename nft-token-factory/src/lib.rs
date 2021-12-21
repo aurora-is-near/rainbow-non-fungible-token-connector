@@ -55,6 +55,7 @@ const VERIFY_LOG_ENTRY_GAS: Gas = 50_000_000_000_000;
 /// Gas to call finish update_metadata method.
 const FINISH_UPDATE_METADATA_GAS: Gas = 5_000_000_000_000;
 
+const UNPAUSE_ALL: Mask = 0;
 const PAUSE_DEPLOY_TOKEN: Mask = 1 << 0;
 const PAUSE_ETH_TO_NEAR_TRANSFER: Mask = 1 << 1;
 
@@ -178,6 +179,15 @@ impl BridgeNFTFactory {
     pub fn metadata_connector(&self) -> Option<String> {
         env::storage_read(METADATA_CONNECTOR_ETH_ADDRESS_STORAGE_KEY)
             .map(|value| String::from_utf8(value).expect("Invalid metadata connector address"))
+    }
+
+    pub fn set_metadata_connector(&mut self, metadata_connector: String) {
+        assert!(self.controller_or_self());
+        validate_eth_address(metadata_connector.clone());
+        env::storage_write(
+            METADATA_CONNECTOR_ETH_ADDRESS_STORAGE_KEY,
+            metadata_connector.as_bytes(),
+        );
     }
 
     /// Map between tokens and timestamp `t`, where `t` stands for the
@@ -551,7 +561,12 @@ mod tests {
     use near_sdk::MockedBlockchain;
     use near_sdk::{testing_env, VMContext};
     use std::convert::TryInto;
+    use std::panic;
     use uint::rustc_hex::{FromHex, ToHex};
+
+    fn alice() -> ValidAccountId {
+        accounts(0)
+    }
 
     fn mock_prover() -> ValidAccountId {
         accounts(3)
@@ -589,6 +604,28 @@ mod tests {
             .current_account_id(current_account_id)
             .attached_deposit(attached_deposit)
             .build()
+    }
+
+    macro_rules! inner_set_env {
+        ($builder:ident) => {
+            $builder
+        };
+
+        ($builder:ident, $key:ident:$value:expr $(,$key_tail:ident:$value_tail:expr)*) => {
+            {
+               $builder.$key($value.try_into().unwrap());
+               inner_set_env!($builder $(,$key_tail:$value_tail)*)
+            }
+        };
+    }
+    
+    macro_rules! set_env {
+        ($($key:ident:$value:expr),* $(,)?) => {
+            let mut builder = VMContextBuilder::new();
+            let mut builder = &mut builder;
+            builder = inner_set_env!(builder, $($key: $value),*);
+            testing_env!(builder.build());
+        };
     }
 
     fn mock_proof(locker: String, token: String, token_id: String) -> Proof {
@@ -728,5 +765,171 @@ mod tests {
         );
         let event = EthLockedEvent::from_log_entry_data(&proof.log_entry_data);
         contract.finish_deposit(true, event.token, event.recipient, event.token_id, proof);
+    }
+    
+    #[test]
+    fn only_admin_can_pause() {
+        set_env!(predecessor_account_id: alice());
+        let mut contract = BridgeNFTFactory::new(mock_prover(), mock_eth_locker_address());
+
+        // Admin can pause
+        set_env!(
+            current_account_id: bridge_token_factory(),
+            predecessor_account_id: bridge_token_factory(),
+        );
+        contract.set_paused(0b1111);
+
+        // Alice can't pause
+        set_env!(
+            current_account_id: bridge_token_factory(),
+            predecessor_account_id: alice(),
+        );
+
+        panic::catch_unwind(move || {
+            contract.set_paused(0);
+        })
+        .unwrap_err();
+    }
+
+    #[test]
+    fn deposit_paused() {
+        set_env!(predecessor_account_id: alice());
+        let mut contract = BridgeNFTFactory::new(mock_prover(), mock_eth_locker_address());
+
+        set_env!(
+            current_account_id: bridge_token_factory(),
+            predecessor_account_id: alice(),
+            attached_deposit: BRIDGE_TOKEN_INIT_BALANCE * 2
+        );
+        let erc20_address = ethereum_address_from_id(0);
+        contract.deploy_bridged_token(erc20_address.clone());
+
+        let proof = mock_proof(
+            mock_eth_locker_address(),
+            erc20_address.clone(),
+            String::from("0"),
+        );
+        // Check it is possible to use deposit while the contract is NOT paused
+        contract.finalise_eth_to_near_transfer(proof);
+
+        // Pause deposit
+        set_env!(
+            current_account_id: bridge_token_factory(),
+            predecessor_account_id: bridge_token_factory(),
+            attached_deposit: BRIDGE_TOKEN_INIT_BALANCE * 2
+        );
+        contract.set_paused(PAUSE_ETH_TO_NEAR_TRANSFER);
+
+        set_env!(
+            current_account_id: bridge_token_factory(),
+            predecessor_account_id: alice(),
+            attached_deposit: BRIDGE_TOKEN_INIT_BALANCE * 2
+        );
+
+        let proof2 = mock_proof(
+            mock_eth_locker_address(),
+            erc20_address.clone(),
+            String::from("0"),
+        );
+        // Check it is NOT possible to use deposit while the contract is paused
+        panic::catch_unwind(move || {
+            contract.finalise_eth_to_near_transfer(proof2);
+        })
+        .unwrap_err();
+    }
+
+    /// Check after all is paused deposit is not available
+    #[test]
+    fn all_paused() {
+        set_env!(predecessor_account_id: alice());
+        let mut contract = BridgeNFTFactory::new(mock_prover(), mock_eth_locker_address());
+
+        set_env!(
+            current_account_id: bridge_token_factory(),
+            predecessor_account_id: alice(),
+            attached_deposit: BRIDGE_TOKEN_INIT_BALANCE * 2
+        );
+        let erc20_address = ethereum_address_from_id(0);
+        contract.deploy_bridged_token(erc20_address.clone());
+
+        let proof = mock_proof(
+            mock_eth_locker_address(),
+            erc20_address.clone(),
+            String::from("0"),
+        );
+        // Check it is possible to use deposit while the contract is NOT paused
+        contract.finalise_eth_to_near_transfer(proof);
+
+        // Pause everything
+        set_env!(
+            current_account_id: bridge_token_factory(),
+            predecessor_account_id: bridge_token_factory(),
+            attached_deposit: BRIDGE_TOKEN_INIT_BALANCE * 2
+        );
+        contract.set_paused(PAUSE_DEPLOY_TOKEN | PAUSE_ETH_TO_NEAR_TRANSFER);
+
+        set_env!(
+            current_account_id: bridge_token_factory(),
+            predecessor_account_id: alice(),
+            attached_deposit: BRIDGE_TOKEN_INIT_BALANCE * 2
+        );
+        let proof2 = mock_proof(
+            mock_eth_locker_address(),
+            erc20_address.clone(),
+            String::from("0"),
+        );
+        // Check it is NOT possible to use deposit while the contract is paused
+        panic::catch_unwind(move || {
+            contract.finalise_eth_to_near_transfer(proof2);
+        })
+        .unwrap_err();
+    }
+
+    /// Check after all is paused and unpaused deposit works
+    #[test]
+    fn no_paused() {
+        set_env!(predecessor_account_id: alice());
+        let mut contract = BridgeNFTFactory::new(mock_prover(), mock_eth_locker_address());
+
+        set_env!(
+            current_account_id: bridge_token_factory(),
+            predecessor_account_id: alice(),
+            attached_deposit: BRIDGE_TOKEN_INIT_BALANCE * 2
+        );
+        let erc20_address = ethereum_address_from_id(0);
+        contract.deploy_bridged_token(erc20_address.clone());
+
+        let proof = mock_proof(
+            mock_eth_locker_address(),
+            erc20_address.clone(),
+            String::from("0"),
+        );
+
+        // Check it is possible to use deposit while the contract is NOT paused
+        contract.finalise_eth_to_near_transfer(proof);
+
+        // Pause everything
+        set_env!(
+            current_account_id: bridge_token_factory(),
+            predecessor_account_id: bridge_token_factory(),
+            attached_deposit: BRIDGE_TOKEN_INIT_BALANCE * 2
+        );
+
+        contract.set_paused(PAUSE_DEPLOY_TOKEN | PAUSE_ETH_TO_NEAR_TRANSFER);
+        contract.set_paused(UNPAUSE_ALL);
+
+        set_env!(
+            current_account_id: bridge_token_factory(),
+            predecessor_account_id: alice(),
+            attached_deposit: BRIDGE_TOKEN_INIT_BALANCE * 2
+        );
+
+        let proof2 = mock_proof(
+            mock_eth_locker_address(),
+            erc20_address.clone(),
+            String::from("0"),
+        );
+        // Check the deposit works after pausing and unpausing everything
+        contract.finalise_eth_to_near_transfer(proof2);
     }
 }
