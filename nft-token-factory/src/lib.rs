@@ -1,18 +1,20 @@
 use admin_controlled::{AdminControlled, Mask};
 use near_contract_standards::non_fungible_token::metadata::{NFTContractMetadata, TokenMetadata};
+use near_sdk::collections::{UnorderedMap, UnorderedSet};
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
-use near_sdk::collections::UnorderedSet;
 use near_sdk::json_types::ValidAccountId;
 use near_sdk::{
     env, ext_contract, near_bindgen, AccountId, Balance, Gas, PanicOnDefault, Promise, PublicKey,
 };
 
 pub use locked_event::EthLockedEvent;
+pub use log_metadata_event::TokenMetadataEvent;
 use prover::*;
 pub use prover::{is_valid_eth_address, validate_eth_address, EthAddress, Proof};
 
 mod locked_event;
 pub mod prover;
+mod log_metadata_event;
 
 near_sdk::setup_alloc!();
 
@@ -20,6 +22,14 @@ const NO_DEPOSIT: Balance = 0;
 
 /// Controller storage key.
 const CONTROLLER_STORAGE_KEY: &[u8] = b"aCONTROLLER";
+
+/// Metadata connector address storage key.
+const METADATA_CONNECTOR_ETH_ADDRESS_STORAGE_KEY: &[u8] = b"aM_CONNECTOR";
+
+/// Prefix used to store a map between tokens and timestamp `t`, where `t` stands for the
+/// block on Ethereum where the metadata for given token was emitted.
+/// The prefix is made specially short since it becomes more expensive with larger prefixes.
+const TOKEN_TIMESTAMP_MAP_PREFIX: &[u8] = b"aTT";
 
 /// Initial balance for the BridgeNFT contract to cover storage and related.
 const BRIDGE_TOKEN_INIT_BALANCE: Balance = 4_500_000_000_000_000_000_000_000; // 3e24yN, 4.5N
@@ -42,10 +52,11 @@ const UPDATE_TOKEN_OWNER_GAS: Gas = 10_000_000_000_000;
 /// Gas to call verify_log_entry on prover.
 const VERIFY_LOG_ENTRY_GAS: Gas = 50_000_000_000_000;
 
-const PAUSE_DEPLOY_TOKEN: Mask = 1 << 0;
+/// Gas to call finish update_metadata method.
+const FINISH_UPDATE_METADATA_GAS: Gas = 5_000_000_000_000;
 
+const PAUSE_DEPLOY_TOKEN: Mask = 1 << 0;
 const PAUSE_ETH_TO_NEAR_TRANSFER: Mask = 1 << 1;
-// const PAUSE_NEAR_TO_ETH_TRANSFER: Mask = 1 << 1;
 
 #[derive(Debug, Eq, PartialEq, BorshSerialize, BorshDeserialize)]
 pub enum ResultType {
@@ -94,6 +105,18 @@ pub trait ExtBridgeNFTFactory {
         #[serializer(borsh)] new_owner_pk: AccountId,
         #[serializer(borsh)] token_id: String,
         #[serializer(borsh)] proof: Proof,
+    ) -> Promise;
+
+    #[result_serializer(borsh)]
+    fn finish_updating_metadata(
+        &mut self,
+        #[callback]
+        #[serializer(borsh)]
+        verification_success: bool,
+        #[serializer(borsh)] token: String,
+        #[serializer(borsh)] name: String,
+        #[serializer(borsh)] symbol: String,
+        #[serializer(borsh)] timestamp: u64,
     ) -> Promise;
 }
 
@@ -149,6 +172,131 @@ impl BridgeNFTFactory {
             "Bridged NFT contract doen't exist."
         );
     }
+
+    /// Ethereum Metadata Connector. This is the address where the contract that emits metadata from tokens
+    /// on ethereum is deployed. Address is encoded as hex.
+    pub fn metadata_connector(&self) -> Option<String> {
+        env::storage_read(METADATA_CONNECTOR_ETH_ADDRESS_STORAGE_KEY)
+            .map(|value| String::from_utf8(value).expect("Invalid metadata connector address"))
+    }
+
+    /// Map between tokens and timestamp `t`, where `t` stands for the
+    /// block on Ethereum where the metadata for given token was emitted.
+    fn token_metadata_last_update(&mut self) -> UnorderedMap<String, u64> {
+        UnorderedMap::new(TOKEN_TIMESTAMP_MAP_PREFIX.to_vec())
+    }
+
+    fn set_token_metadata_timestamp(&mut self, token: &String, timestamp: u64) -> Balance {
+        let initial_storage = env::storage_usage();
+        self.token_metadata_last_update().insert(&token, &timestamp);
+        let current_storage = env::storage_usage();
+        let required_deposit =
+            Balance::from(current_storage - initial_storage) * env::storage_byte_cost();
+        required_deposit
+    }
+
+    pub fn update_metadata(&mut self, #[serializer(borsh)] proof: Proof) -> Promise {
+        let event = TokenMetadataEvent::from_log_entry_data(&proof.log_entry_data);
+
+        let expected_metadata_connector = self.metadata_connector();
+
+        assert_eq!(
+            Some(hex::encode(event.metadata_connector)),
+            expected_metadata_connector,
+            "Event's address {} does not match contract address of this token {:?}",
+            hex::encode(&event.metadata_connector),
+            expected_metadata_connector,
+        );
+
+        assert!(
+            self.tokens.contains(&event.token),
+            "Bridge token for {} is not deployed yet",
+            event.token
+        );
+
+        let last_timestamp = self
+            .token_metadata_last_update()
+            .get(&event.token)
+            .unwrap_or_default();
+
+        // Note that it is allowed for event.timestamp to be equal to last_timestamp.
+        // This disallow replacing the metadata with old information, but allows replacing with information
+        // from the same block. This is useful in case there is a failure in the cross-contract to the
+        // bridge token with storage but timestamp in this contract is updated. In those cases the call
+        // can be made again, to make the replacement effective.
+        assert!(event.timestamp >= last_timestamp);
+
+        ext_prover::verify_log_entry(
+            proof.log_index,
+            proof.log_entry_data,
+            proof.receipt_index,
+            proof.receipt_data,
+            proof.header_data,
+            proof.proof,
+            false, // Do not skip bridge call. This is only used for development and diagnostics.
+            &self.prover_account,
+            NO_DEPOSIT,
+            VERIFY_LOG_ENTRY_GAS,
+        )
+        .then(ext_self::finish_updating_metadata(
+            event.token,
+            event.name,
+            event.symbol,
+            event.timestamp,
+            &env::current_account_id(),
+            env::attached_deposit(),
+            FINISH_UPDATE_METADATA_GAS + SET_METADATA_GAS,
+        ))
+    }
+
+    /// Finish updating token metadata once the proof was successfully validated.
+    /// Can only be called by the contract itself.
+    pub fn finish_updating_metadata(
+        &mut self,
+        #[callback]
+        #[serializer(borsh)]
+        verification_success: bool,
+        #[serializer(borsh)] token: String,
+        #[serializer(borsh)] name: String,
+        #[serializer(borsh)] symbol: String,
+        #[serializer(borsh)] timestamp: u64,
+    ) {
+        assert_self();
+        assert!(verification_success, "Failed to verify the proof");
+
+        let required_deposit = self.set_token_metadata_timestamp(&token, timestamp);
+
+        assert!(env::attached_deposit() >= required_deposit);
+
+        env::log(
+            format!(
+                "Finish updating metadata. Name: {} Symbol: {:?} at: {:?}",
+                name, symbol, timestamp
+            )
+            .as_bytes(),
+        );
+
+        let reference = None;
+        let reference_hash = None;
+        let base_uri = None;
+        let icon = None;
+
+        ext_bridge_nft::set_metadata(
+            NFTContractMetadata{
+                spec: String::from(""),
+                name: name,
+                symbol: symbol,
+                icon: icon,
+                base_uri: base_uri,
+                reference: reference,
+                reference_hash: reference_hash,
+            },
+            &self.get_bridge_nft_token_account_id(token),
+            env::attached_deposit(),
+            SET_METADATA_GAS,
+        );
+    }
+
     /// Finalise the withdraw to eth from a sub NFT contract. Only this bridge can emit
     /// the execution outcome to be processed on the Eth side Caller must be <token_address>.
     /// <current_account_id>, where <token_address> exists in the `tokens`.

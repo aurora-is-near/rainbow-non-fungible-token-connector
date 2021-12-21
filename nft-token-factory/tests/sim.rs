@@ -75,7 +75,7 @@ fn simulate() {
     .assert_success();
 
     let nft_account_id: String =
-        view!(factory.get_nft_token_account_id(mock_eth_nft_address_one())).unwrap_json();
+        view!(factory.get_bridge_nft_token_account_id(mock_eth_nft_address_one())).unwrap_json();
 
     assert_eq!(
         nft_account_id,
