@@ -4,7 +4,7 @@ use near_sdk::collections::{UnorderedMap, UnorderedSet};
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::json_types::ValidAccountId;
 use near_sdk::{
-    env, ext_contract, near_bindgen, AccountId, Balance, Gas, PanicOnDefault, Promise, PublicKey,
+    env, ext_contract, near_bindgen, AccountId, Balance, Gas, PanicOnDefault, Promise, PublicKey
 };
 
 pub use locked_event::EthLockedEvent;
@@ -53,7 +53,7 @@ const UPDATE_TOKEN_OWNER_GAS: Gas = 10_000_000_000_000;
 const VERIFY_LOG_ENTRY_GAS: Gas = 50_000_000_000_000;
 
 /// Gas to call finish update_metadata method.
-const FINISH_UPDATE_METADATA_GAS: Gas = 5_000_000_000_000;
+const FINISH_UPDATE_METADATA_GAS: Gas = 10_000_000_000_000;
 
 const UNPAUSE_ALL: Mask = 0;
 const PAUSE_DEPLOY_TOKEN: Mask = 1 << 0;
@@ -202,9 +202,10 @@ impl BridgeNFTFactory {
         let current_storage = env::storage_usage();
         let required_deposit =
             Balance::from(current_storage - initial_storage) * env::storage_byte_cost();
-        required_deposit
+        required_deposit 
     }
 
+    #[payable]
     pub fn update_metadata(&mut self, #[serializer(borsh)] proof: Proof) -> Promise {
         let event = TokenMetadataEvent::from_log_entry_data(&proof.log_entry_data);
 
@@ -261,6 +262,7 @@ impl BridgeNFTFactory {
 
     /// Finish updating token metadata once the proof was successfully validated.
     /// Can only be called by the contract itself.
+    #[payable]
     pub fn finish_updating_metadata(
         &mut self,
         #[callback]
@@ -270,12 +272,11 @@ impl BridgeNFTFactory {
         #[serializer(borsh)] name: String,
         #[serializer(borsh)] symbol: String,
         #[serializer(borsh)] timestamp: u64,
-    ) {
+    ) -> Promise {
         assert_self();
         assert!(verification_success, "Failed to verify the proof");
 
         let required_deposit = self.set_token_metadata_timestamp(&token, timestamp);
-
         assert!(env::attached_deposit() >= required_deposit);
 
         env::log(
@@ -302,9 +303,9 @@ impl BridgeNFTFactory {
                 reference_hash: reference_hash,
             },
             &self.get_bridge_nft_token_account_id(token),
-            env::attached_deposit(),
+            NO_DEPOSIT,
             SET_METADATA_GAS,
-        );
+        )
     }
 
     /// Finalise the withdraw to eth from a sub NFT contract. Only this bridge can emit
@@ -536,14 +537,14 @@ impl BridgeNFTFactory {
     }
 
     pub fn set_controller(&mut self, controller: AccountId) {
-        assert!(self.controller_or_self());
+        assert!(self.controller_or_self(), "Not Controller: {}", self.controller_or_self());
         assert!(env::is_valid_account_id(controller.as_bytes()));
         env::storage_write(CONTROLLER_STORAGE_KEY, controller.as_bytes());
     }
 
     pub fn controller_or_self(&self) -> bool {
         let caller = env::predecessor_account_id();
-        caller == env::current_account_id()
+        self.owner_id == caller
             || self
                 .controller()
                 .map(|controller| controller == caller)
@@ -588,6 +589,10 @@ mod tests {
 
     fn token_locker() -> String {
         "6b175474e89094c44da98b954eedeac495271d0f".to_string()
+    }
+
+    fn metadata_connector() -> String {
+        "6b175474e89094c77da98b954eedeac495271d0f".to_string()
     }
 
     fn ethereum_address_from_id(id: u8) -> String {
@@ -931,5 +936,17 @@ mod tests {
         );
         // Check the deposit works after pausing and unpausing everything
         contract.finalise_eth_to_near_transfer(proof2);
+    }
+
+    #[test]
+    fn success_set_metadata_connector() {
+        set_env!(
+            current_account_id: bridge_token_factory(),
+            predecessor_account_id: bridge_token_factory(),
+            signer_account_id: bridge_token_factory()
+        );
+        let mut contract = BridgeNFTFactory::new(mock_prover(), mock_eth_locker_address());        
+        contract.set_metadata_connector(metadata_connector());
+        assert_eq!(contract.metadata_connector().unwrap(), metadata_connector(), "metadata_connector not valid!")
     }
 }

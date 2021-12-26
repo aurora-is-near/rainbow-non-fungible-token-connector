@@ -3,6 +3,9 @@ use near_sdk::json_types::ValidAccountId;
 use near_sdk::test_utils::accounts;
 use near_sdk::AccountId;
 use near_sdk_sim::{call, deploy, init_simulator, to_yocto, view, ContractAccount, UserAccount};
+use near_contract_standards::non_fungible_token::metadata::{
+    NFTContractMetadata,
+};
 
 use serde_json::json;
 use std::convert::TryInto;
@@ -48,12 +51,19 @@ fn simulate() {
     let (master_account, factory, _) = init();
     let alice = master_account.create_user(get_alice().into(), to_yocto("100"));
     const BRIDGE_TOKEN_INIT_BALANCE: near_sdk::Balance = 6_000_000_000_000_000_000_000_000;
+    const UPDATE_METADATA_DEPOSIT: near_sdk::Balance = 100_000_000_000_000_000_000_000;
     call!(
         master_account,
         factory.new(get_prover().try_into().unwrap(), mock_eth_locker_address())
     )
     .assert_success();
 
+    call!(
+        master_account,
+        factory.set_controller(master_account.account_id())
+    )
+    .assert_success();
+    
     call!(
         master_account,
         factory.deploy_bridged_token(mock_eth_nft_address_one()),
@@ -97,6 +107,29 @@ fn simulate() {
     let token: Option<Token> =
         call_json!(master_account, nft_account_id.nft_token({"token_id": "0"})).unwrap_json();
     assert!(token == None, "Token should be None");
+
+    // metadata
+    call!(
+        master_account,
+        factory.set_metadata_connector(metadata_connector())
+    ).assert_success();
+
+    let metadata_proof = mock_metadata_proof(
+        metadata_connector(),
+        mock_eth_nft_address_one()
+    );
+
+    call!(
+        master_account,
+        factory.update_metadata(metadata_proof),
+        deposit = UPDATE_METADATA_DEPOSIT
+    )
+    .assert_success();
+
+    let metadata: Option<NFTContractMetadata> =
+        call_json!(master_account, nft_account_id.nft_metadata({})).unwrap_json();
+    assert!(metadata.clone().unwrap().name == "NFT", "Invalid name");
+    assert!(metadata.clone().unwrap().symbol == "NFT symbol", "Invalid symbol");
 }
 
 fn mock_proof(locker: String, token: String, token_id: String) -> nft_token_factory::Proof {
@@ -114,6 +147,29 @@ fn mock_proof(locker: String, token: String, token_id: String) -> nft_token_fact
         recipient: get_alice(),
         token_uri: "".to_string(),
     };
+    nft_token_factory::Proof {
+        log_index: 0,
+        log_entry_data: event_data.to_log_entry_data(),
+        receipt_index: 0,
+        receipt_data: vec![],
+        header_data: vec![],
+        proof: vec![],
+    }
+}
+
+fn mock_metadata_proof(metadata_connector: String, token: String) -> nft_token_factory::Proof {
+    let event_data = nft_token_factory::TokenMetadataEvent {
+        metadata_connector: metadata_connector
+            .from_hex::<Vec<_>>()
+            .unwrap()
+            .as_slice()
+            .try_into()
+            .unwrap(),
+        token,
+        name: String::from("NFT"),
+        symbol: String::from("NFT symbol"),
+        timestamp: 10
+    };
 
     nft_token_factory::Proof {
         log_index: 0,
@@ -125,8 +181,17 @@ fn mock_proof(locker: String, token: String, token_id: String) -> nft_token_fact
     }
 }
 
+fn metadata_connector() -> String {
+    "6b175474e89094c77da98b954eedeac495271d0f".to_string()
+}
+
+// set_metadata_connector
 fn get_alice() -> AccountId {
     "123".to_string()
+}
+
+fn get_metadata_connector() -> AccountId {
+    "metadata_connector".to_string()
 }
 
 fn mock_eth_nft_address_one() -> AccountId {
