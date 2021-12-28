@@ -1,5 +1,5 @@
 use admin_controlled::{AdminControlled, Mask};
-use near_contract_standards::non_fungible_token::TokenId;
+use near_contract_standards::non_fungible_token::{Token, TokenId};
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::json_types::ValidAccountId;
 use near_sdk::{
@@ -41,6 +41,8 @@ pub trait ExtNFTContract {
         approval_id: Option<u64>,
         memo: Option<String>,
     ) -> Promise;
+
+    fn nft_token(&self, token_id: TokenId) -> Option<Token>;
 }
 
 #[ext_contract(ext_self)]
@@ -54,6 +56,7 @@ pub trait ExtLocker {
 
     fn finish_unlock(
         &mut self,
+        #[callback] token: Option<Token>,
         token_account_id: String,
         token_id: String,
         recipient: AccountId,
@@ -71,6 +74,7 @@ pub enum ResultType {
         recipient: EthAddress,
         token_account_id: AccountId,
         token_id: String,
+        token_uri: String,
     },
 }
 
@@ -79,7 +83,7 @@ pub enum ResultType {
 pub struct Locker {
     eth_factory_address: EthAddress,
     prover_account: ValidAccountId,
-    paused: Mask
+    paused: Mask,
 }
 
 #[near_bindgen]
@@ -114,6 +118,12 @@ impl Locker {
             1,
             TRANSFER_FROM_GAS,
         )
+        .then(ext_nft_approval::nft_token(
+            token_id.clone(),
+            &token_account_id,
+            NO_DEPOSIT,
+            FINISH_LOCK_GAS,
+        ))
         .then(ext_self::finish_lock(
             token_account_id,
             token_id,
@@ -126,15 +136,21 @@ impl Locker {
 
     pub fn finish_lock(
         &mut self,
+        #[callback] token: Option<Token>,
         token_account_id: AccountId,
         token_id: String,
         eth_recipient: EthAddress,
     ) -> ResultType {
         self.check_promise_result(0, String::from("Transfer token failed"));
+        let mut token_uri = String::from("");
+        if let Some(metadata) = &mut token.unwrap().metadata {
+            token_uri = metadata.media.clone().unwrap_or_default();
+        }
         ResultType::Lock {
             token_account_id: token_account_id,
             token_id: token_id,
             recipient: eth_recipient,
+            token_uri: token_uri,
         }
     }
 

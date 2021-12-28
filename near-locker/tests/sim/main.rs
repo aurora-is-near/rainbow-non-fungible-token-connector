@@ -23,9 +23,10 @@ pub enum ResultType {
         recipient: String,
     },
     Lock {
-        token_account_id: String,
+        recipient: EthAddress,
+        token_account_id: AccountId,
         token_id: String,
-        recipient: String,
+        token_uri: String,
     },
 }
 
@@ -113,7 +114,7 @@ fn simulate_lock() {
     .assert_success();
 
     // check if the nft exists
-    let mut token: Token = view!(mock_nft.nft_token(TokenId::from("2"))).unwrap_json();
+    let token: Token = view!(mock_nft.nft_token(TokenId::from("2"))).unwrap_json();
     assert_eq!(token.token_id, TokenId::from("2"), "Invalid token id");
     assert_eq!(token.owner_id, get_bob().to_string(), "Invalid token owner");
 
@@ -165,8 +166,10 @@ fn simulate_lock() {
     let expected: ResultType = ResultType::Lock {
         token_account_id: get_nft(),
         token_id: TokenId::from("1"),
-        recipient: mock_eth_factory_address(),
+        recipient: validate_eth_address(mock_eth_factory_address()),
+        token_uri: String::from(""),
     };
+
     assert_eq!(result, expected, "Invalid lock result type");
 
     // check if the locker is the new owner.
@@ -263,6 +266,16 @@ fn mock_proof(withdrawer: String, token: String, token_id: String) -> near_locke
         header_data: vec![],
         proof: vec![],
     }
+}
+
+pub type EthAddress = [u8; 20];
+
+pub fn validate_eth_address(address: String) -> EthAddress {
+    let data = hex::decode(address).expect("address should beg a valid hex string.");
+    assert_eq!(data.len(), 20, "address should be 20 bytes long");
+    let mut result = [0u8; 20];
+    result.copy_from_slice(&data);
+    result
 }
 
 #[macro_export]
