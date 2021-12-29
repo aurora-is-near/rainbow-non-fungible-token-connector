@@ -5,6 +5,7 @@ import "rainbow-bridge/contracts/eth/nearprover/contracts/ProofDecoder.sol";
 import "rainbow-bridge/contracts/eth/nearprover/contracts/INearProver.sol";
 import "rainbow-bridge/contracts/eth/nearbridge/contracts/AdminControlled.sol";
 import "./BridgedNFT.sol";
+import "hardhat/console.sol";
 
 contract NFTFactory is AdminControlled {
     using Borsh for Borsh.Data;
@@ -74,10 +75,39 @@ contract NFTFactory is AdminControlled {
         );
         uint256 tokenId = stringToUint(tokenIdAsString);
 
+        string memory tokenUri = string(Borsh.decodeBytes(borshDataFromProof));
+
         // mint new nft
         address erc721Address = bridgedNFTs[accountID];
         require(erc721Address != address(0), "Contract not deployed");
-        BridgedNFT(erc721Address).mintNFT(tokenId, recipient);
+        BridgedNFT(erc721Address).mintNFT(tokenId, recipient, tokenUri);
+    }
+
+    /// @notice This function allows to finalise the bridge process by calling the
+    /// evm contract and mint the new token.
+    /// @param _proofData near proof.
+    /// @param _proofBlockHeader proof block header.
+    function update_metadata(
+        bytes calldata _proofData,
+        uint64 _proofBlockHeader
+    ) external pausable(PAUSE_FINALISE_FROM_NEAR) {
+        ProofDecoder.ExecutionStatus memory status = _parseAndConsumeProof(
+            _proofData,
+            _proofBlockHeader
+        );
+
+        Borsh.Data memory borshDataFromProof = Borsh.from(status.successValue);
+        uint8 flag = Borsh.decodeU8(borshDataFromProof);
+        require(flag == 0, "ERR_NOT_LOCK_RESULT");
+
+        string memory accountID = string(Borsh.decodeBytes(borshDataFromProof));
+        string memory name = string(Borsh.decodeBytes(borshDataFromProof));
+        string memory symbol = string(Borsh.decodeBytes(borshDataFromProof));
+
+        // mint new nft
+        address erc721Address = bridgedNFTs[accountID];
+        require(erc721Address != address(0), "Contract not deployed");
+        BridgedNFT(erc721Address).setMetadata(name, symbol);
     }
 
     function _parseAndConsumeProof(
