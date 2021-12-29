@@ -1,7 +1,6 @@
 [package]
 name = "near-metadata"
 version = "0.1.0"
-authors = ["Near Inc <hello@nearprotocol.com>"]
 edition = "2018"
 
 [lib]
@@ -23,4 +22,3 @@ rlp = "0.4.2"
 [dev-dependencies]
 near-sdk-sim = "3.1.0"
 mock-nft = { path = "../mock-nft" }
-near-metadata = { path = "../near-metadata" }

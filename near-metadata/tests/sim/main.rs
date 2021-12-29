@@ -1,17 +1,12 @@
-use near_contract_standards::non_fungible_token::metadata::{
-    NFTContractMetadata, NonFungibleTokenMetadataProvider, TokenMetadata,
-};
-use near_contract_standards::non_fungible_token::{Token, TokenId};
+use near_contract_standards::non_fungible_token::TokenId;
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::json_types::ValidAccountId;
 use near_sdk::serde::Deserialize;
 use near_sdk::test_utils::accounts;
 use near_sdk::{AccountId, Balance};
-use near_sdk_sim::{call, deploy, init_simulator, to_yocto, view, ContractAccount, UserAccount};
+use near_sdk_sim::{call, deploy, init_simulator, to_yocto, ContractAccount, UserAccount};
 
 use serde_json::json;
-use std::convert::TryInto;
-use uint::rustc_hex::FromHex;
 
 use mock_nft::MockNFTContract;
 use near_metadata::NearMetadataContract;
@@ -19,10 +14,11 @@ use near_metadata::NearMetadataContract;
 #[derive(Debug, Eq, PartialEq, Deserialize, BorshSerialize, BorshDeserialize)]
 pub enum ResultType {
     Log {
+        account_id: String,
         name: String,
         symbol: String,
         icon: Option<String>,
-        uri: Option<String>,
+        base_uri: Option<String>,
     },
 }
 
@@ -66,9 +62,8 @@ fn init() -> (
 
 #[test]
 fn simulate_metadata_transfer() {
-    let (master_account, mock_nft, near_metadata) = init();
+    let (master_account, mock_nft, _) = init();
     let alice = master_account.create_user(get_alice().into(), to_yocto("100"));
-    let bob = master_account.create_user(get_bob().into(), to_yocto("100"));
 
     const DEPOSIT: Balance = 6_000_000_000_000_000_000_000_000;
     // mint nft for alice
@@ -87,42 +82,25 @@ fn simulate_metadata_transfer() {
     )
     .assert_success();
 
-    call!(
+    let metadata: String = get_metadata().to_string();
+    let res: ResultType = call_json!(
         alice,
-        mock_nft.nft_transfer(get_bob(), TokenId::from("2"), None, None),
-        deposit = 1
+        metadata.get_metadata_log({"account_id": mock_nft.account_id()})
     )
-    .assert_success();
+    .unwrap_json();
 
-    // check if the nft exists
-    let mut token: Token = view!(mock_nft.nft_token(TokenId::from("2"))).unwrap_json();
-    assert_eq!(token.token_id, TokenId::from("2"), "Invalid token id");
-    assert_eq!(token.owner_id, get_bob().to_string(), "Invalid token owner");
-
-    // check if the nft exists
-    let mut token: Token = view!(mock_nft.nft_token(TokenId::from("1"))).unwrap_json();
-    assert_eq!(token.token_id, TokenId::from("1"), "Invalid token id");
-    assert_eq!(
-        token.owner_id,
-        get_alice().to_string(),
-        "Invalid token owner"
-    );
-    let metadata_acc: String = get_metadata().to_string();
-
-    call!(
-        master_account,
-        near_metadata.get_metadata_log(metadata_acc),
-        deposit = 1
-    )
-    .assert_success();
+    let expected = ResultType::Log {
+        account_id: get_nft(),
+        name: String::from("bbb"),
+        symbol: String::from("ccc"),
+        icon: None,
+        base_uri: None,
+    };
+    assert_eq!(res, expected, "Invalid metadata");
 }
 
 fn get_alice() -> ValidAccountId {
     accounts(0)
-}
-
-fn get_bob() -> ValidAccountId {
-    accounts(1)
 }
 
 fn get_nft() -> AccountId {
@@ -132,7 +110,6 @@ fn get_nft() -> AccountId {
 fn get_metadata() -> AccountId {
     String::from("metadata")
 }
-
 
 #[macro_export]
 macro_rules! call_json {

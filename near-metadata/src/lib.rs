@@ -14,10 +14,11 @@ const GAS: Gas = 50_000_000_000_000;
 #[derive(Debug, Eq, PartialEq, Serialize, BorshSerialize, BorshDeserialize)]
 pub enum ResultType {
     Log {
+        account_id: String,
         name: String,
         symbol: String,
         icon: Option<String>,
-        uri: Option<String>,
+        base_uri: Option<String>,
     },
 }
 
@@ -26,13 +27,17 @@ pub enum ResultType {
 pub struct NearMetadata {}
 
 #[ext_contract(ext_nft_metadata)]
-pub trait NonFungibleTokenMetadata: NonFungibleToken {
-    fn nft_metadata(&self) -> Promise;
+pub trait NonFungibleTokenMetadata {
+    fn nft_metadata(&self) -> NFTContractMetadata;
 }
 
 #[ext_contract(ext_self)]
 pub trait ExtNearMetadata {
-    fn finalize_nft_metadata(&self, #[callback] metadata: NFTContractMetadata) -> ResultType;
+    fn finalize_nft_metadata(
+        &self,
+        #[callback] metadata: NFTContractMetadata,
+        account_id: String,
+    ) -> Promise;
 }
 
 #[near_bindgen]
@@ -44,21 +49,28 @@ impl NearMetadata {
     }
 
     pub fn get_metadata_log(self, account_id: AccountId) -> Promise {
-        log!("called get_metadata_log");
         ext_nft_metadata::nft_metadata(&account_id, BALANCE, GAS).then(
-            ext_self::finalize_nft_metadata(&env::current_account_id(), BALANCE, GAS),
+            ext_self::finalize_nft_metadata(
+                account_id,
+                &env::current_account_id(),
+                BALANCE,
+                GAS,
+            ),
         )
     }
 
-    #[result_serializer(borsh)]
-    pub fn finalize_nft_metadata(&self, #[callback] metadata: NFTContractMetadata) -> ResultType {
-        log!("called finalize_nft_metadata");
+    pub fn finalize_nft_metadata(
+        &self,
+        #[callback] metadata: NFTContractMetadata,
+        account_id: String,
+    ) -> ResultType {
         self.check_promise_result(0, String::from("Failed to transfer the nft metadata."));
         ResultType::Log {
+            account_id: account_id,
             name: metadata.name,
             symbol: metadata.symbol,
             icon: metadata.icon,
-            uri: metadata.base_uri,
+            base_uri: metadata.base_uri,
         }
     }
 

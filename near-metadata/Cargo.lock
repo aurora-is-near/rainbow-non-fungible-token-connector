@@ -1687,7 +1687,6 @@ dependencies = [
  "hex",
  "mock-nft",
  "near-contract-standards",
- "near-metadata",
  "near-sdk 3.1.0",
  "near-sdk-sim",
  "rlp 0.4.6",
