@@ -167,7 +167,7 @@ fn simulate_lock() {
         token_account_id: get_nft(),
         token_id: TokenId::from("1"),
         recipient: validate_eth_address(mock_eth_factory_address()),
-        token_uri: String::from(""),
+        token_uri: String::from("aaa"),
     };
 
     assert_eq!(result, expected, "Invalid lock result type");
