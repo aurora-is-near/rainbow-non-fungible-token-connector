@@ -1,7 +1,9 @@
-use near_contract_standards::non_fungible_token::metadata::NFTContractMetadata;
+use near_contract_standards::non_fungible_token::metadata::{
+    NFTContractMetadata, NonFungibleTokenMetadataProvider,
+};
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::{
-    env, ext_contract, near_bindgen, AccountId, Balance, Gas, PanicOnDefault, Promise,
+    env, ext_contract, log, near_bindgen, AccountId, Balance, Gas, PanicOnDefault, Promise,
     PromiseResult,
 };
 use serde::Serialize;
@@ -25,32 +27,32 @@ pub struct NearMetadata {}
 
 #[ext_contract(ext_nft_metadata)]
 pub trait NonFungibleTokenMetadata: NonFungibleToken {
-    fn nft_metadata(&self) -> NFTContractMetadata;
+    fn nft_metadata(&self) -> Promise;
 }
 
 #[ext_contract(ext_self)]
 pub trait ExtNearMetadata {
-    fn finalize_nft_metadata(
-        &self,
-        #[callback]
-        metadata: NFTContractMetadata,
-    ) -> ResultType;
+    fn finalize_nft_metadata(&self, #[callback] metadata: NFTContractMetadata) -> ResultType;
 }
 
 #[near_bindgen]
 impl NearMetadata {
+    #[init]
+    pub fn new() -> Self {
+        assert!(!env::state_exists(), "Contract Already Initialized");
+        NearMetadata {}
+    }
+
     pub fn get_metadata_log(self, account_id: AccountId) -> Promise {
+        log!("called get_metadata_log");
         ext_nft_metadata::nft_metadata(&account_id, BALANCE, GAS).then(
             ext_self::finalize_nft_metadata(&env::current_account_id(), BALANCE, GAS),
         )
     }
 
     #[result_serializer(borsh)]
-    pub fn finalize_nft_metadata(
-        &self,
-        #[callback]
-        metadata: NFTContractMetadata,
-    ) -> ResultType {
+    pub fn finalize_nft_metadata(&self, #[callback] metadata: NFTContractMetadata) -> ResultType {
+        log!("called finalize_nft_metadata");
         self.check_promise_result(0, String::from("Failed to transfer the nft metadata."));
         ResultType::Log {
             name: metadata.name,
