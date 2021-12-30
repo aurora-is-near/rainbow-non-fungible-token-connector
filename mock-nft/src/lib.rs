@@ -1,6 +1,9 @@
 use near_contract_standards::non_fungible_token::metadata::TokenMetadata;
 use near_contract_standards::non_fungible_token::{NonFungibleToken, Token, TokenId};
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
+use near_contract_standards::non_fungible_token::metadata::{
+    NFTContractMetadata, NonFungibleTokenMetadataProvider,
+};
 use near_sdk::json_types::ValidAccountId;
 use near_sdk::{
     env, near_bindgen, AccountId, BorshStorageKey, PanicOnDefault, Promise, PromiseOrValue,
@@ -45,7 +48,7 @@ impl MockNFT {
             Some(TokenMetadata {
                 title: None,
                 description: None,
-                media: None,
+                media: Some(String::from("aaa")),
                 media_hash: None,
                 copies: None,
                 issued_at: None,
@@ -57,6 +60,21 @@ impl MockNFT {
                 reference_hash: None,
             }),
         )
+    }
+}
+
+#[near_bindgen]
+impl NonFungibleTokenMetadataProvider for MockNFT {
+    fn nft_metadata(&self) -> NFTContractMetadata {
+        NFTContractMetadata{
+            spec: String::from("aaa"),
+            name: String::from("bbb"),
+            symbol: String::from("ccc"),
+            icon: None,
+            base_uri: None,
+            reference: None,
+            reference_hash: None,
+        }
     }
 }
 

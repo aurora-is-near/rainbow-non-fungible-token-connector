@@ -74,7 +74,35 @@ impl BridgedNFT {
 
     pub fn set_metadata(&mut self, metadata: NFTContractMetadata) {
         self.is_controller();
-        self.metadata = LazyOption::new(StorageKey::Metadata.try_to_vec().unwrap(), Some(&metadata))
+        self.metadata =
+            LazyOption::new(StorageKey::Metadata.try_to_vec().unwrap(), Some(&metadata));
+    }
+
+    pub fn set_token_metadata(&mut self, token_id: TokenId, token_uri: String) {
+        assert_eq!(
+            env::predecessor_account_id(),
+            self.tokens.owner_by_id.get(&token_id).unwrap(),
+            "Invalid caller"
+        );
+        if let Some(token_metadata_by_id) = &mut self.tokens.token_metadata_by_id {
+            token_metadata_by_id.insert(
+                &token_id,
+                &TokenMetadata {
+                    title: None,
+                    description: None,
+                    media: Some(token_uri),
+                    media_hash: None,
+                    copies: None,
+                    issued_at: None,
+                    expires_at: None,
+                    starts_at: None,
+                    updated_at: None,
+                    extra: None,
+                    reference: None,
+                    reference_hash: None,
+                },
+            );
+        }
     }
 
     pub fn set_token_owner_account_id(&mut self, new_owner: ValidAccountId) {
@@ -380,5 +408,29 @@ mod tests {
         contract.nft_mint("0".into(), alice().into(), token_metadata());
         testing_env!(get_context(nft(), 1u128.pow(1)).clone());
         contract.withdraw("0".into(), mock_eth_address());
+    }
+
+    #[test]
+    fn success_set_token_metadata() {
+        testing_env!(get_context(nft(), 11u128.pow(24)).clone());
+        let mut contract = BridgedNFT::new();
+        contract.nft_mint("0".into(), alice().into(), token_metadata());
+        contract.set_token_metadata("0".into(), String::from("uri"));
+        let token: Token = contract.tokens.nft_token("0".into()).unwrap();
+        let meta = token.metadata.as_ref();
+        assert_eq!(meta.unwrap().media, Some(String::from("uri")));
+    }
+
+    #[test]
+    #[should_panic(expected = "Invalid caller")]
+    fn fail_set_token_metadata() {
+        testing_env!(get_context(nft(), 11u128.pow(24)).clone());
+        let mut contract = BridgedNFT::new();
+        contract.nft_mint("0".into(), alice().into(), token_metadata());
+        testing_env!(get_context(bob(), 11u128.pow(24)).clone());
+        contract.set_token_metadata("0".into(), String::from("uri"));
+        let token: Token = contract.tokens.nft_token("0".into()).unwrap();
+        let meta = token.metadata.as_ref();
+        assert_eq!(meta.unwrap().media, Some(String::from("uri")));
     }
 }

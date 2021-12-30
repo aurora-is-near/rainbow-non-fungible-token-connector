@@ -17,7 +17,6 @@ const { serialize } = require("rainbow-bridge-lib/rainbow/borsh.js");
 let NFTFactoryContract: NFTFactory;
 let NearMockContract: NearProverMock;
 let signer: SignerWithAddress;
-const proof = require("./proof1.json");
 
 const SCHEMA = {
   Locked: {
@@ -29,6 +28,27 @@ const SCHEMA = {
       ["tokenAccountId", [3]],
       ["tokenIdStringLength", [4]],
       ["tokenId", [2]],
+      ["tokenUriStringLength", [4]],
+      ["tokenUri", [8]],
+    ],
+  },
+};
+
+const SCHEMA_METADATA = {
+  Log: {
+    kind: "struct",
+    fields: [
+      ["flag", "u8"],
+      ["accountIdStringLength", [4]],
+      ["accountId", [3]],
+      ["nameStringLength", [4]],
+      ["name", [4]],
+      ["symbolStringLength", [4]],
+      ["symbol", [4]],
+      ["iconStringLength", [4]],
+      ["icon", [4]],
+      ["baseUriStringLength", [4]],
+      ["baseUri", [4]],
     ],
   },
 };
@@ -69,44 +89,37 @@ describe("NodeOperator", function () {
       bridgedNFTAddress
     )) as BridgedNFT;
 
-    proof.outcome_proof.outcome.status.SuccessValue = serialize(
-      SCHEMA,
-      "Locked",
-      {
-        flag: 0,
-        recipient: hardhat.ethers.utils.arrayify(signer.address),
-        tokenAccountIdStringLength: int32ToBytes(3),
-        tokenAccountId: Buffer.from("NFT", "utf-8"),
-        tokenIdStringLength: int32ToBytes(2),
-        tokenId: Buffer.from("22", "utf-8"),
-      }
-    ).toString("base64");
-
     await NFTFactoryContract.finaliseNearToEthTransfer(
-      borshifyOutcomeProof(proof),
+      borshifyOutcomeProof(setupProof("22", "NFT", "tokenuri")),
       10
     );
     expect(await bridgedNFT.balanceOf(signer.address)).equal(1);
     expect(await bridgedNFT.ownerOf(22)).equal(signer.address);
   });
 
-  it("Fail finaliseNearToEthTransfer Contract not deployed", async function () {
-    proof.outcome_proof.outcome.status.SuccessValue = serialize(
-      SCHEMA,
-      "Locked",
-      {
-        flag: 0,
-        recipient: hardhat.ethers.utils.arrayify(signer.address),
-        tokenAccountIdStringLength: int32ToBytes(3),
-        tokenAccountId: Buffer.from("NFT", "utf-8"),
-        tokenIdStringLength: int32ToBytes(2),
-        tokenId: Buffer.from("22", "utf-8"),
-      }
-    ).toString("base64");
+  it("Success updateMetadata", async function () {
+    await NFTFactoryContract.deployBridgedToken("NFT", "", "");
+    const bridgedNFTArtifact = await hardhat.artifacts.readArtifact(
+      "BridgedNFT"
+    );
+    const bridgedNFTAddress = await NFTFactoryContract.bridgedNFTs("NFT");
+    const bridgedNFT: BridgedNFT = (await ethers.getContractAt(
+      bridgedNFTArtifact.abi,
+      bridgedNFTAddress
+    )) as BridgedNFT;
+    const proof = setupProofForMetadata("NFT", "NAME", "SYMB");
+    expect(
+      await NFTFactoryContract.update_metadata(borshifyOutcomeProof(proof), 10)
+    );
 
+    expect(await bridgedNFT.name()).eq("NAME");
+    expect(await bridgedNFT.symbol()).eq("SYMB");
+  });
+
+  it("Fail finaliseNearToEthTransfer Contract not deployed", async function () {
     await expect(
       NFTFactoryContract.finaliseNearToEthTransfer(
-        borshifyOutcomeProof(proof),
+        borshifyOutcomeProof(setupProof("22", "NFT", "tokenuri")),
         10
       )
     ).revertedWith("Contract not deployed");
@@ -129,7 +142,7 @@ describe("NodeOperator", function () {
       bridgedNFTArtifact.abi,
       bridgedNFTAddress
     )) as BridgedNFT;
-    await mintNFT("22", "NFT");
+    await mintNFT("22", "NFT", "tokenuri");
     expect(await bridgedNFT.withdrawNFT(22, "reciver"))
       .emit(bridgedNFT, "Withdraw")
       .withArgs(bridgedNFT.address, signer.address, "NFT", 22, "reciver");
@@ -145,7 +158,7 @@ describe("NodeOperator", function () {
       bridgedNFTArtifact.abi,
       bridgedNFTAddress
     )) as BridgedNFT;
-    await mintNFT("22", "NFT");
+    await mintNFT("22", "NFT", "tokenuri");
     await NFTFactoryContract.setPauseBridgedWithdraw(true);
     await expect(bridgedNFT.withdrawNFT(22, "reciver")).revertedWith(
       "Withdrawal is disabled"
@@ -154,15 +167,44 @@ describe("NodeOperator", function () {
 
   it("Fail proof used many times", async function () {
     await NFTFactoryContract.deployBridgedToken("NFT", "", "");
-    await mintNFT("22", "NFT");
-    await expect(mintNFT("22", "NFT")).revertedWith(
+    await mintNFT("22", "NFT", "tokenuri");
+    await expect(mintNFT("22", "NFT", "tokenuri")).revertedWith(
       "The lock event cannot be reused"
     );
+  });
+
+  it("Success get token uri", async function () {
+    await NFTFactoryContract.deployBridgedToken("NFT", "", "");
+    const bridgedNFTArtifact = await hardhat.artifacts.readArtifact(
+      "BridgedNFT"
+    );
+    const bridgedNFTAddress = await NFTFactoryContract.bridgedNFTs("NFT");
+    const bridgedNFT: BridgedNFT = (await ethers.getContractAt(
+      bridgedNFTArtifact.abi,
+      bridgedNFTAddress
+    )) as BridgedNFT;
+    await mintNFT("22", "NFT", "tokenuri");
+    expect(await bridgedNFT.tokenURI(22)).eq("tokenuri");
   });
 });
 
 // accountId == NFT
-async function mintNFT(tokenId: String, accountId: String) {
+async function mintNFT(tokenId: String, accountId: String, tokenuri: String) {
+  await NFTFactoryContract.finaliseNearToEthTransfer(
+    borshifyOutcomeProof(setupProof(tokenId, accountId, tokenuri)),
+    10
+  );
+}
+
+function int32ToBytes(num: number) {
+  const arr = new ArrayBuffer(4); // an Int32 takes 4 bytes
+  const view = new DataView(arr);
+  view.setUint32(0, num, true); // byteOffset = 0; litteEndian = true as Borsh library is little endian
+  return new Uint8Array(arr);
+}
+
+function setupProof(tokenId: String, accountId: String, tokenUri: String) {
+  const proof = require("./proof1.json");
   proof.outcome_proof.outcome.status.SuccessValue = serialize(
     SCHEMA,
     "Locked",
@@ -173,18 +215,37 @@ async function mintNFT(tokenId: String, accountId: String) {
       tokenAccountId: Buffer.from(accountId, "utf-8"),
       tokenIdStringLength: int32ToBytes(2),
       tokenId: Buffer.from(tokenId, "utf-8"),
+      tokenUriStringLength: int32ToBytes(8),
+      tokenUri: Buffer.from(tokenUri, "utf-8"),
     }
   ).toString("base64");
 
-  await NFTFactoryContract.finaliseNearToEthTransfer(
-    borshifyOutcomeProof(proof),
-    10
-  );
+  return proof;
 }
 
-function int32ToBytes(num: number) {
-  const arr = new ArrayBuffer(4); // an Int32 takes 4 bytes
-  const view = new DataView(arr);
-  view.setUint32(0, num, true); // byteOffset = 0; litteEndian = true as Borsh library is little endian
-  return new Uint8Array(arr);
+function setupProofForMetadata(
+  accountId: String,
+  name: String,
+  symbol: String
+) {
+  const proof = require("./proof1.json");
+  proof.outcome_proof.outcome.status.SuccessValue = serialize(
+    SCHEMA_METADATA,
+    "Log",
+    {
+      flag: 0,
+      accountIdStringLength: int32ToBytes(3),
+      accountId: Buffer.from(accountId, "utf-8"),
+      nameStringLength: int32ToBytes(4),
+      name: Buffer.from(name, "utf-8"),
+      symbolStringLength: int32ToBytes(4),
+      symbol: Buffer.from(symbol, "utf-8"),
+      iconStringLength: int32ToBytes(4),
+      icon: Buffer.from("icon", "utf-8"),
+      baseUriStringLength: int32ToBytes(4),
+      baseUri: Buffer.from("buri", "utf-8"),
+    }
+  ).toString("base64");
+
+  return proof;
 }
