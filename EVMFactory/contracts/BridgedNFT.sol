@@ -133,6 +133,7 @@ contract BridgedNFT is
     }
 
     function setMetadata(string memory name_, string memory symbol_) external {
+        require(msg.sender == nftFactory, "Caller is not the nft factory");
         _name = name_;
         _symbol = symbol_;
     }
